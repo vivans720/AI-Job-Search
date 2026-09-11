@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  LayoutDashboard,
   Compass,
   Bookmark,
   Settings,
@@ -29,6 +30,7 @@ const navGroups: NavGroup[] = [
   {
     title: "INTELLIGENCE",
     items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/jobs", label: "Job Discovery", icon: Compass },
     ],
   },

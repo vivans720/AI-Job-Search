@@ -17,7 +17,7 @@ export default function Home() {
           const data = await res.json();
           if (isMounted) {
             if (data.setup_completed) {
-              router.replace("/jobs");
+              router.replace("/dashboard");
             } else {
               router.replace("/setup");
             }
