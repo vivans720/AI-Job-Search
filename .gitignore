@@ -105,13 +105,3 @@ deep-research-report.md
 explanation.md
 report-source.md
 project-audit-2026-09-06.md
-
-# ── Claude Code / Agent Tooling ──
-.agents/
-skills-lock.json
-
-# ── One-Off Reports & Research Docs ──
-deep-research-report.md
-explanation.md
-report-source.md
-project-audit-2026-09-06.md

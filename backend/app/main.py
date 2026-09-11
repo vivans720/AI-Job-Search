@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
 from app.database import init_pgvector
 
+from app.core.redis import init_redis_pool, close_redis_pool
+
 logger = structlog.get_logger(__name__)
 
 
@@ -17,7 +19,19 @@ async def lifespan(app: FastAPI):
         logger.info("pgvector_extension_verified")
     except Exception as e:
         logger.error("pgvector_init_failed", error=str(e))
+
+    try:
+        await init_redis_pool()
+    except Exception as e:
+        logger.warning("redis_startup_warning", error=str(e))
+
+    from app.services.scheduler_service import scheduler_service
+    scheduler_service.start()
+
     yield
+
+    scheduler_service.stop()
+    await close_redis_pool()
     logger.info("application_shutdown")
 
 

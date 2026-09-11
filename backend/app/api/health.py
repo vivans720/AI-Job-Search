@@ -1,8 +1,13 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.config import settings
 from app.database import get_db
+
+try:
+    import redis.asyncio as aioredis
+except ImportError:
+    aioredis = None
+
 
 router = APIRouter(tags=["Health"])
 
@@ -11,6 +16,7 @@ router = APIRouter(tags=["Health"])
 async def health_check(db: AsyncSession = Depends(get_db)):
     db_connected = False
     pgvector_ready = False
+    redis_connected = False
 
     try:
         result = await db.execute(text("SELECT 1;"))
@@ -23,16 +29,27 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         if ext_result.scalar() == "vector":
             pgvector_ready = True
     except Exception as e:
-        return {
-            "status": "degraded",
-            "database": "error",
-            "pgvector": False,
-            "error": str(e),
-        }
+        db_connected = False
+        pgvector_ready = False
 
-    status = "ok" if (db_connected and pgvector_ready) else "degraded"
+    from app.core.redis import get_redis
+    r = await get_redis()
+    if r is not None:
+        try:
+            await r.ping()
+            redis_connected = True
+        except Exception:
+            redis_connected = False
+    else:
+        redis_connected = False
+
+
+    core_ok = db_connected and pgvector_ready
     return {
-        "status": status,
+        "status": "ok" if core_ok else "degraded",
         "database": "connected" if db_connected else "disconnected",
         "pgvector": pgvector_ready,
+        "redis": "connected" if redis_connected else "disconnected",
     }
+
+

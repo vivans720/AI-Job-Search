@@ -6,6 +6,14 @@ import {
   AlertCircle,
   RefreshCw,
   History,
+  Clock,
+  CalendarClock,
+  Play,
+  Cpu,
+  Zap,
+  Key,
+  Globe,
+  Sparkles,
 } from "lucide-react";
 
 interface Preferences {
@@ -13,6 +21,30 @@ interface Preferences {
   experience_max_years: number;
   preferred_technologies: string[];
   preferred_industries?: string[];
+  sync_interval_hours?: number;
+  auto_sync_enabled?: boolean;
+  last_auto_sync_at?: string | null;
+  ai_provider?: string | null;
+  ai_model?: string | null;
+  ai_base_url?: string | null;
+  has_custom_api_key?: boolean;
+}
+
+interface AIProviderInfo {
+  id: string;
+  name: string;
+  type: string;
+  default_model: string;
+  configured: boolean;
+  description: string;
+}
+
+interface ScheduleInfo {
+  auto_sync_enabled: boolean;
+  sync_interval_hours: number;
+  last_auto_sync_at: string | null;
+  next_run_at: string | null;
+  seconds_until_next_run: number | null;
 }
 
 interface SyncLogEntry {
@@ -29,11 +61,31 @@ interface SyncLogEntry {
 export default function AuditLogsPage() {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [loading, setLoading] = useState(true);
-  const [message] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Scheduler states
+  const [schedule, setSchedule] = useState<ScheduleInfo | null>(null);
+  const [updatingSchedule, setUpdatingSchedule] = useState(false);
+  const [triggeringSchedule, setTriggeringSchedule] = useState(false);
 
   // Sync history states
   const [syncHistory, setSyncHistory] = useState<SyncLogEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // AI Provider states (Phase 39)
+  const [aiProviders, setAiProviders] = useState<AIProviderInfo[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<string>("ollama");
+  const [customModel, setCustomModel] = useState<string>("");
+  const [customBaseUrl, setCustomBaseUrl] = useState<string>("");
+  const [customApiKey, setCustomApiKey] = useState<string>("");
+  const [testingAi, setTestingAi] = useState<boolean>(false);
+  const [savingAi, setSavingAi] = useState<boolean>(false);
+  const [aiTestResult, setAiTestResult] = useState<{
+    reachable: boolean;
+    latency_ms?: number;
+    error?: string;
+    sample_response?: string;
+  } | null>(null);
 
   const fetchPrefs = async () => {
     try {
@@ -41,11 +93,38 @@ export default function AuditLogsPage() {
       if (res.ok) {
         const data = await res.json();
         setPrefs(data);
+        if (data.ai_provider) setSelectedProvider(data.ai_provider);
+        if (data.ai_model) setCustomModel(data.ai_model);
+        if (data.ai_base_url) setCustomBaseUrl(data.ai_base_url);
       }
     } catch {
       // Backend offline
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAiProviders = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/ai/providers");
+      if (res.ok) {
+        const list = await res.json();
+        setAiProviders(list);
+      }
+    } catch {
+      // AI provider listing offline
+    }
+  };
+
+  const fetchSchedule = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/sources/schedule");
+      if (res.ok) {
+        const data = await res.json();
+        setSchedule(data);
+      }
+    } catch {
+      // Backend offline
     }
   };
 
@@ -64,8 +143,129 @@ export default function AuditLogsPage() {
     }
   };
 
+  const handleTestAiConnection = async () => {
+    setTestingAi(true);
+    setAiTestResult(null);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/ai/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: selectedProvider,
+          model: customModel || undefined,
+          base_url: customBaseUrl || undefined,
+          api_key: customApiKey || undefined,
+        }),
+      });
+      const data = await res.json();
+      setAiTestResult(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Connection failed";
+      setAiTestResult({ reachable: false, error: msg });
+    } finally {
+      setTestingAi(false);
+    }
+  };
+
+  const handleSaveAiProvider = async () => {
+    setSavingAi(true);
+    setMessage(null);
+    try {
+      const payload: Record<string, unknown> = {
+        ai_provider: selectedProvider,
+        ai_model: customModel || null,
+        ai_base_url: customBaseUrl || null,
+      };
+      if (customApiKey.trim()) {
+        payload.ai_api_key = customApiKey.trim();
+      }
+      const res = await fetch("http://localhost:8000/api/v1/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setPrefs(updated);
+        setCustomApiKey("");
+        setMessage({
+          type: "success",
+          text: `AI Provider updated to ${selectedProvider.toUpperCase()}${customModel ? ` (${customModel})` : ""}.`,
+        });
+      } else {
+        setMessage({ type: "error", text: "Failed to save AI provider configuration." });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Save failed";
+      setMessage({ type: "error", text: msg });
+    } finally {
+      setSavingAi(false);
+    }
+  };
+
+  const handleUpdateInterval = async (hours: number, enabled: boolean) => {
+    setUpdatingSchedule(true);
+    setMessage(null);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sync_interval_hours: hours,
+          auto_sync_enabled: enabled,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setPrefs(updated);
+        await fetchSchedule();
+        setMessage({
+          type: "success",
+          text: enabled
+            ? `Automated sync interval set to every ${hours} hours.`
+            : "Automated scheduled ingestion disabled.",
+        });
+      } else {
+        setMessage({ type: "error", text: "Failed to update scheduler settings." });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to update schedule.";
+      setMessage({ type: "error", text: msg });
+    } finally {
+      setUpdatingSchedule(false);
+    }
+  };
+
+  const handleTriggerScheduleNow = async () => {
+    setTriggeringSchedule(true);
+    setMessage(null);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/sources/schedule/trigger", {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        await fetchSchedule();
+        setMessage({
+          type: "success",
+          text: data.message || "Scheduled sync triggered successfully.",
+        });
+        setTimeout(fetchSyncHistory, 2000);
+      } else {
+        setMessage({ type: "error", text: "Failed to trigger scheduled sync." });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Trigger error.";
+      setMessage({ type: "error", text: msg });
+    } finally {
+      setTriggeringSchedule(false);
+    }
+  };
+
   useEffect(() => {
     fetchPrefs();
+    fetchAiProviders();
+    fetchSchedule();
     fetchSyncHistory();
   }, []);
 
@@ -73,7 +273,7 @@ export default function AuditLogsPage() {
     return (
       <div className="flex items-center justify-center py-24 text-sm text-zinc-500 font-mono">
         <RefreshCw className="w-4 h-4 animate-spin mr-2 text-emerald-400" />
-        Loading ingestion audit logs...
+        Loading settings and audit telemetry...
       </div>
     );
   }
@@ -86,20 +286,22 @@ export default function AuditLogsPage() {
     );
   }
 
+  const currentInterval = prefs.sync_interval_hours ?? 24;
+  const isAutoEnabled = prefs.auto_sync_enabled ?? true;
+
   return (
     <div className="space-y-8 pb-16">
       {/* Action Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/[0.08]">
         <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono uppercase tracking-wider mb-2">
-            <span>Ingestion Audit Logs</span>
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-mono uppercase tracking-wider mb-2">
+            <span>Phase 39 — AI Provider & Ingestion Control</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Ingestion Audit Logs</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">AI Provider & Scheduler Settings</h1>
           <p className="text-sm text-zinc-400 mt-1">
-            Only ingestion audit logs are visible.
+            Configure pluggable AI intelligence engines (Ollama, OpenAI, Gemini, Claude) and automated ingestion schedules.
           </p>
         </div>
-
       </div>
 
       {message && (
@@ -119,6 +321,298 @@ export default function AuditLogsPage() {
         </div>
       )}
 
+      {/* Phase 39: AI Provider Configuration Card */}
+      <div className="p-6 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+              <Cpu className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-white">AI Provider Abstraction</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                  {selectedProvider.toUpperCase()} ACTIVE
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Pluggable LLM interface powering skill extraction, resume profiling, and match explanations.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTestAiConnection}
+              disabled={testingAi}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-obsidian-800 hover:bg-obsidian-700 border border-white/[0.08] text-zinc-300 rounded-xl text-xs font-medium transition-colors"
+            >
+              <Zap className={`w-3.5 h-3.5 ${testingAi ? "animate-pulse text-amber-400" : "text-amber-400"}`} />
+              <span>{testingAi ? "Testing Ping..." : "Test Connection"}</span>
+            </button>
+            <button
+              onClick={handleSaveAiProvider}
+              disabled={savingAi}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-medium shadow-sm transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{savingAi ? "Saving..." : "Save AI Provider"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Live Test Diagnostic Output */}
+        {aiTestResult && (
+          <div
+            className={`p-3.5 rounded-xl text-xs border backdrop-blur-md flex items-start gap-2.5 ${
+              aiTestResult.reachable
+                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+                : "bg-rose-500/10 border-rose-500/20 text-rose-300"
+            }`}
+          >
+            {aiTestResult.reachable ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
+            )}
+            <div className="flex-1 font-mono">
+              <div className="font-semibold">
+                {aiTestResult.reachable ? "Provider Connected Successfully" : "Connection Failed"}
+              </div>
+              <div className="text-[11px] opacity-80 mt-0.5">
+                {aiTestResult.latency_ms && `Latency: ${aiTestResult.latency_ms} ms`}
+                {aiTestResult.sample_response && ` • Response: "${aiTestResult.sample_response}"`}
+                {aiTestResult.error && ` • Error: ${aiTestResult.error}`}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Provider Cards Selection */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {(aiProviders.length > 0
+            ? aiProviders.map((p) => ({
+                id: p.id,
+                name: p.name,
+                type: p.type,
+                hint: p.description,
+                configured: p.configured,
+              }))
+            : [
+                { id: "ollama", name: "Ollama (Local)", type: "local", hint: "Zero cost, private", configured: true },
+                { id: "openai", name: "OpenAI", type: "cloud", hint: "GPT-4o, GPT-4o-mini", configured: false },
+                { id: "gemini", name: "Google Gemini", type: "cloud", hint: "gemini-2.0-flash", configured: false },
+                { id: "anthropic", name: "Claude (Anthropic)", type: "cloud", hint: "Claude 3.5 Haiku", configured: false },
+                { id: "deepseek", name: "DeepSeek", type: "cloud", hint: "DeepSeek V3 / R1", configured: false },
+                { id: "openai_compatible", name: "Custom / Proxy", type: "cloud", hint: "OmniRoute, vLLM, LM Studio", configured: false },
+              ]
+          ).map((item) => {
+            const isSelected = selectedProvider.toLowerCase() === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setSelectedProvider(item.id);
+                  setAiTestResult(null);
+                }}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  isSelected
+                    ? "bg-purple-500/15 border-purple-500/40 shadow-sm"
+                    : "bg-obsidian-950/40 border-white/[0.05] hover:border-white/[0.1] hover:bg-white/[0.02]"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs font-semibold ${isSelected ? "text-purple-300" : "text-zinc-200"}`}>
+                    {item.name}
+                  </span>
+                  <span
+                    className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
+                      item.type === "local"
+                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                        : "bg-zinc-800 text-zinc-400"
+                    }`}
+                  >
+                    {item.type}
+                  </span>
+                </div>
+                <div className="text-[11px] text-zinc-400 mt-1">{item.hint}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Dynamic Credentials Form */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-white/[0.06]">
+          <div>
+            <label className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1.5">
+              Model Override
+            </label>
+            <input
+              type="text"
+              placeholder={
+                selectedProvider === "ollama"
+                  ? "qwen3.5:9b"
+                  : selectedProvider === "openai"
+                    ? "gpt-4o-mini"
+                    : selectedProvider === "gemini"
+                      ? "gemini-2.0-flash"
+                      : selectedProvider === "anthropic"
+                        ? "claude-3-5-haiku-20241022"
+                        : "auto/best-fast"
+              }
+              value={customModel}
+              onChange={(e) => setCustomModel(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-obsidian-950/80 border border-white/[0.08] rounded-xl text-white placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Globe className="w-3 h-3 text-zinc-500" />
+              <span>Base URL (Optional)</span>
+            </label>
+            <input
+              type="text"
+              placeholder={
+                selectedProvider === "ollama"
+                  ? "http://localhost:11434/v1"
+                  : selectedProvider === "gemini"
+                    ? "https://generativelanguage.googleapis.com/v1beta/openai/"
+                    : "Leave empty for provider default"
+              }
+              value={customBaseUrl}
+              onChange={(e) => setCustomBaseUrl(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-obsidian-950/80 border border-white/[0.08] rounded-xl text-white placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Key className="w-3 h-3 text-zinc-500" />
+              <span>API Key {prefs.has_custom_api_key && selectedProvider === prefs.ai_provider ? "(Configured ✓)" : ""}</span>
+            </label>
+            <input
+              type="password"
+              placeholder={
+                selectedProvider === "ollama"
+                  ? "Not required for local Ollama"
+                  : prefs.has_custom_api_key
+                    ? "•••••••••••••••• (Leave blank to keep)"
+                    : "Enter API key"
+              }
+              value={customApiKey}
+              disabled={selectedProvider === "ollama"}
+              onChange={(e) => setCustomApiKey(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-obsidian-950/80 border border-white/[0.08] rounded-xl text-white placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50 disabled:opacity-40"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Scheduler Configuration Card */}
+      <div className="p-6 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              <CalendarClock className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Automated Ingestion Schedule</h3>
+              <p className="text-[11px] text-zinc-400">
+                Periodic background worker runs crawl, freshness gate, and dedup pipeline automatically.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleTriggerScheduleNow}
+            disabled={triggeringSchedule}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs font-medium transition-colors"
+          >
+            <Play className={`w-3.5 h-3.5 ${triggeringSchedule ? "animate-spin" : ""}`} />
+            <span>{triggeringSchedule ? "Triggering..." : "Run Schedule Now"}</span>
+          </button>
+        </div>
+
+        {/* Schedule Interval Selection */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          {[
+            { label: "Every 6 hours", hours: 6, enabled: true },
+            { label: "Every 12 hours", hours: 12, enabled: true },
+            { label: "Every 24 hours", hours: 24, enabled: true },
+            { label: "Manual Only", hours: 0, enabled: false },
+          ].map((opt) => {
+            const isSelected =
+              (!opt.enabled && !isAutoEnabled) ||
+              (opt.enabled && isAutoEnabled && currentInterval === opt.hours);
+
+            return (
+              <button
+                key={opt.label}
+                disabled={updatingSchedule}
+                onClick={() => handleUpdateInterval(opt.hours, opt.enabled)}
+                className={`p-4 rounded-xl border text-left transition-all ${
+                  isSelected
+                    ? "bg-emerald-950/40 border-emerald-500/40 text-white shadow-surface-glow"
+                    : "bg-obsidian-950/40 border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:border-white/[0.12]"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold">{opt.label}</span>
+                  {isSelected && <span className="w-2 h-2 rounded-full bg-emerald-400"></span>}
+                </div>
+                <span className="text-[11px] text-zinc-500 block font-mono">
+                  {opt.enabled ? `Runs 4x/day (${opt.hours}h window)` : "Triggered on demand only"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Schedule Timing Status */}
+        {schedule && (
+          <div className="p-4 rounded-xl bg-obsidian-950/60 border border-white/[0.06] flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
+            <div className="flex items-center gap-2 text-zinc-400">
+              <Clock className="w-4 h-4 text-zinc-500" />
+              <span>
+                Status:{" "}
+                <strong className={schedule.auto_sync_enabled ? "text-emerald-400" : "text-amber-400"}>
+                  {schedule.auto_sync_enabled ? `Active (${schedule.sync_interval_hours}h)` : "Disabled"}
+                </strong>
+              </span>
+            </div>
+
+            {schedule.next_run_at && (
+              <div className="text-zinc-400">
+                Next scheduled sync:{" "}
+                <span className="text-zinc-200">
+                  {new Date(schedule.next_run_at).toLocaleString("en-IN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    day: "numeric",
+                    month: "short",
+                  })}
+                </span>
+              </div>
+            )}
+
+            {schedule.last_auto_sync_at && (
+              <div className="text-zinc-400">
+                Last run:{" "}
+                <span className="text-zinc-300">
+                  {new Date(schedule.last_auto_sync_at).toLocaleString("en-IN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    day: "numeric",
+                    month: "short",
+                  })}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Sync Ingestion Audit History */}
       <div className="p-6 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset space-y-4">
         <div className="flex items-center justify-between">
@@ -128,10 +622,10 @@ export default function AuditLogsPage() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-white">Ingestion Audit Log</h3>
-              <p className="text-[11px] text-zinc-400">Recent cron and trigger discovery runs</p>
+              <p className="text-[11px] text-zinc-400">Recent cron and manual trigger discovery runs</p>
             </div>
           </div>
-        <button
+          <button
             onClick={fetchSyncHistory}
             disabled={loadingHistory}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-obsidian-800 hover:bg-obsidian-700 border border-white/[0.08] text-zinc-300 rounded-xl text-xs font-medium transition-colors"

@@ -7,21 +7,13 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 @router.get("/llm")
 async def llm_health():
-    provider_name = settings.LLM_PROVIDER
-    model = settings.OLLAMA_MODEL if provider_name == "ollama" else settings.LLM_MODEL
-
-    try:
-        provider = get_llm_provider()
-        await provider.complete([{"role": "user", "content": "ping"}], max_tokens=5)
-        return {
-            "provider": provider_name,
-            "model": model,
-            "reachable": True,
-        }
-    except Exception as e:
-        return {
-            "provider": provider_name,
-            "model": model,
-            "reachable": False,
-            "error": str(e),
-        }
+    """Diagnose the currently active system AI provider."""
+    provider = get_llm_provider()
+    diag = await provider.test_connection()
+    return {
+        "provider": diag.get("provider", settings.LLM_PROVIDER),
+        "model": diag.get("model", getattr(provider, "model", "default")),
+        "reachable": diag.get("reachable", False),
+        "latency_ms": diag.get("latency_ms"),
+        "error": diag.get("error"),
+    }

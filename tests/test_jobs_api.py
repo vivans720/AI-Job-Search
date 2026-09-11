@@ -245,3 +245,35 @@ async def test_search_jobs_api_experience_filter():
                 assert j["experience_min"] <= 2
 
 
+@pytest.mark.asyncio
+async def test_trigger_job_sync_async_and_status():
+    from unittest.mock import AsyncMock, patch
+
+    mock_queue = AsyncMock()
+    mock_queue.enqueue.return_value = "job-phase36-test"
+    mock_queue.get_job_status.return_value = {
+        "job_id": "job-phase36-test",
+        "status": "completed",
+        "task_type": "sync_source",
+        "result": {"canonical_saved": 4, "total_discovered": 10},
+    }
+
+    with patch("app.services.queue_service.task_queue.enqueue", mock_queue.enqueue), \
+         patch("app.services.queue_service.task_queue.get_job_status", mock_queue.get_job_status):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            # 1. Enqueue job (202 Accepted)
+            res = await ac.post("/api/v1/jobs/sync?source=internshala&async_mode=true")
+            assert res.status_code == 202
+            data = res.json()
+            assert data["job_id"] == "job-phase36-test"
+            assert data["status"] == "queued"
+
+            # 2. Check status (200 OK)
+            status_res = await ac.get("/api/v1/jobs/sync/status/job-phase36-test")
+            assert status_res.status_code == 200
+            status_data = status_res.json()
+            assert status_data["status"] == "completed"
+            assert status_data["result"]["canonical_saved"] == 4
+
+
+

@@ -17,20 +17,56 @@ async def get_sources_health() -> dict[str, Any]:
     """
     registry = get_source_registry()
     health_results = await registry.health_check_all()
-    all_healthy = all(health_results.values()) if health_results else True
+    source_details = {}
+    from app.sources.rate_limiter import SOURCE_RATE_LIMITS
+    for name, src in registry._sources.items():
+        metrics = src.get_metrics().model_dump() if hasattr(src, "get_metrics") else {}
+        limits = SOURCE_RATE_LIMITS.get(name, SOURCE_RATE_LIMITS.get("default", {}))
+        source_details[name] = {
+            "healthy": health_results.get(name, False),
+            "enabled": src.enabled,
+            "status": getattr(src, "status", "ok"),
+            "last_error": getattr(src, "last_error", None),
+            "last_error_category": getattr(src, "last_error_category", None),
+            "rate_limit": f"{limits.get('rate', 0)} req/{int(limits.get('per', 60))}s",
+            "metrics": metrics,
+        }
 
-    try:
-        from app.crawling.crawler_registry import get_crawler_capability
-        capability = await get_crawler_capability()
-    except Exception:
-        capability = {"installed": False, "enabled": False, "healthy": False, "provider": "unknown", "live": False, "used_by": []}
+    all_healthy = all(health_results.values()) if health_results else False
+    from app.config import settings
+    capability = settings.CRAWL4AI_ENABLED
 
     return {
         "status": "ok" if all_healthy else "degraded",
         "sources": health_results,
+        "details": source_details,
         "infrastructure": {
             "crawl4ai": capability,
         },
+    }
+
+
+@router.get("/schedule")
+async def get_schedule_status() -> dict[str, Any]:
+    """
+    Returns automated sync schedule status, interval, and next scheduled execution.
+    """
+    from app.services.scheduler_service import scheduler_service
+    return await scheduler_service.get_schedule_info()
+
+
+@router.post("/schedule/trigger")
+async def trigger_scheduled_sync_now() -> dict[str, Any]:
+    """
+    Manually triggers the scheduler's sync routine immediately.
+    """
+    from app.services.scheduler_service import scheduler_service
+    enqueued = await scheduler_service.check_and_trigger_scheduled_sync()
+    info = await scheduler_service.get_schedule_info()
+    return {
+        "triggered": enqueued,
+        "schedule": info,
+        "message": "Scheduled sync triggered." if enqueued else "Sync not due or auto-sync disabled.",
     }
 
 

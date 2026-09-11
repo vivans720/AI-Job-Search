@@ -74,27 +74,40 @@ class SourceRegistry:
         If any exception occurs (e.g. rate limit, anti-bot, network timeout), the database
         session is immediately rolled back to prevent dirty reads or uncommitted state.
         """
-        try:
-            stats = await ingestion_service.ingest_source(db, source, query)
-            src_status = getattr(source, "status", "ok")
-            if src_status == "blocked":
-                stats["status"] = "blocked"
-                stats["error"] = getattr(source, "last_error", None) or "Source blocked by upstream perimeter"
-            elif src_status == "failed":
-                stats["status"] = "failed"
-                stats["error"] = getattr(source, "last_error", None) or "Source search failed"
-            else:
-                stats["status"] = "success"
-            return stats
-        except Exception as e:
-            logger.error(
-                "source_sync_isolated_failed_rolling_back",
-                source=source.source_name,
-                error=str(e),
-            )
-            if hasattr(db, "rollback"):
-                await db.rollback()
-            raise
+        from app.core.lock import redis_lock
+
+        # Acquire per-source distributed lock (5 min timeout) to avoid concurrent worker collisions
+        async with redis_lock(f"sync:{source.source_name}", timeout_seconds=300):
+            try:
+                if hasattr(source, "reset_metrics"):
+                    source.reset_metrics()
+                stats = await ingestion_service.ingest_source(db, source, query)
+                src_status = getattr(source, "status", "ok")
+                metrics = source.get_metrics().model_dump() if hasattr(source, "get_metrics") else {}
+                stats["metrics"] = metrics
+                stats["duration_ms"] = metrics.get("duration_ms", 0.0)
+                stats["retries_count"] = metrics.get("retries_count", 0)
+
+                if src_status == "blocked":
+                    stats["status"] = "blocked"
+                    stats["error"] = getattr(source, "last_error", None) or "Source blocked by upstream perimeter"
+                    stats["error_category"] = getattr(source, "last_error_category", "rate_limit_block")
+                elif src_status == "failed":
+                    stats["status"] = "failed"
+                    stats["error"] = getattr(source, "last_error", None) or "Source search failed"
+                    stats["error_category"] = getattr(source, "last_error_category", "fatal")
+                else:
+                    stats["status"] = "success"
+                return stats
+            except Exception as e:
+                logger.error(
+                    "source_sync_isolated_failed_rolling_back",
+                    source=source.source_name,
+                    error=str(e),
+                )
+                if hasattr(db, "rollback"):
+                    await db.rollback()
+                raise
 
     async def sync_all_isolated(
         self,
@@ -128,6 +141,7 @@ class SourceRegistry:
         for src in enabled:
             src_status = "success"
             src_err = None
+            src_err_cat = None
             stats = {}
             try:
                 stats = await self.sync_source_isolated(src, db, ingestion_service, query)
@@ -148,25 +162,33 @@ class SourceRegistry:
                 if stats.get("status") == "blocked":
                     src_status = "blocked"
                     src_err = stats.get("error")
+                    src_err_cat = stats.get("error_category", "rate_limit_block")
                 elif stats.get("status") == "failed":
                     src_status = "failed"
                     src_err = stats.get("error")
+                    src_err_cat = stats.get("error_category", "fatal")
             except Exception as e:
                 logger.error("source_sync_isolated_aborted", source=src.source_name, error=str(e))
                 aggregated_stats["failed_sources"].append({"source": src.source_name, "error": str(e)})
-                if "403" in str(e) or "block" in str(e).lower():
+                if "403" in str(e) or "429" in str(e) or "block" in str(e).lower():
                     src_status = "blocked"
+                    src_err_cat = "rate_limit_block"
                 else:
                     src_status = "failed"
+                    src_err_cat = "transient_network" if "timeout" in str(e).lower() else "fatal"
                 src_err = str(e)
 
             report = {
                 "status": src_status,
                 "discovered": stats.get("total_discovered", 0),
                 "accepted": stats.get("canonical_saved", 0) + stats.get("updated_existing", 0),
+                "duration_ms": stats.get("duration_ms", 0.0),
+                "retries": stats.get("retries_count", 0),
             }
             if src_err:
                 report["error"] = src_err
+            if src_err_cat:
+                report["error_category"] = src_err_cat
             aggregated_stats["sources"][src.source_name] = report
 
         # Determine overall status

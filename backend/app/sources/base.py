@@ -73,9 +73,33 @@ class NormalizedJob(BaseModel):
     raw_data: dict[str, Any] = Field(default_factory=dict)
 
 
+class SourceCrawlMetrics(BaseModel):
+    source: str
+    requests_count: int = 0
+    retries_count: int = 0
+    raw_discovered: int = 0
+    parse_errors: int = 0
+    duration_ms: float = 0.0
+    status: str = "ok"  # ok, degraded, blocked, failed
+    last_error_category: str | None = None
+    last_error: str | None = None
+
+
 class JobSource(ABC):
     source_name: str
     enabled: bool = True
+    status: str = "ok"
+    last_error: str | None = None
+    last_error_category: str | None = None
+
+    def __init__(self):
+        self._metrics = SourceCrawlMetrics(source=getattr(self, "source_name", "unknown"))
+
+    def get_metrics(self) -> SourceCrawlMetrics:
+        return self._metrics.model_copy()
+
+    def reset_metrics(self) -> None:
+        self._metrics = SourceCrawlMetrics(source=getattr(self, "source_name", "unknown"))
 
     @abstractmethod
     async def search(self, query: JobSearchQuery) -> list[RawJob]:
@@ -96,3 +120,4 @@ class JobSource(ABC):
     async def health_check(self) -> bool:
         """Verifies connectivity/availability of the source."""
         pass
+

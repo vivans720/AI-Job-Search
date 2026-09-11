@@ -434,6 +434,18 @@ async def get_dashboard_stats(
     profile = await get_candidate_profile(db, user.id)
     prefs = await get_or_create_preferences(db, user.id)
 
+    from app.core.redis import get_redis
+    redis = await get_redis()
+    cache_key = f"stats:dashboard:{user.id}"
+    if redis:
+        try:
+            cached_data = await redis.get(cache_key)
+            if cached_data:
+                import json
+                return json.loads(cached_data)
+        except Exception:
+            pass
+
     # 1. Fresh jobs (excluding saved, tracked, and rejected jobs)
     fresh_jobs = await search_jobs_db(
         db,
@@ -480,7 +492,7 @@ async def get_dashboard_stats(
         if s.status in pipeline_counts:
             pipeline_counts[s.status] += 1
 
-    return {
+    res_payload = {
         "total_fresh_jobs": len(fresh_jobs),
         "strong_matches": strong_matches,
         "freshness_hours": prefs.freshness_hours,
@@ -495,28 +507,78 @@ async def get_dashboard_stats(
         },
     }
 
+    if redis:
+        try:
+            import json
+            await redis.set(cache_key, json.dumps(res_payload, default=str), ex=120)
+        except Exception:
+            pass
 
-@router.post("/jobs/sync")
+    return res_payload
+
+
+@router.get("/jobs/sync/status/{job_id}")
+async def get_job_sync_status(job_id: str):
+    """Retrieves asynchronous crawl/ingestion job status and metrics."""
+    from app.services.queue_service import task_queue
+
+    status_data = await task_queue.get_job_status(job_id)
+    if not status_data:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found or expired")
+    return status_data
+
+
+@router.post("/jobs/sync", status_code=202)
 async def trigger_job_sync(
+    response: Response,
     source: str = Query("all", description="Job source to sync ('all', 'internshala', 'naukri', 'linkedin')"),
     freshness_hours: int = Query(24, description="Maximum age of job postings in hours (1, 4, 8, 12, 16, 24)"),
+    async_mode: bool = Query(True, description="Enqueue in background queue (202) or run synchronous (200)"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Triggers live ingestion from job board(s) directly into the database."""
-    from app.services.job_ingestion_service import JobIngestionService
-    from app.sources.base import JobSearchQuery
-    from app.sources.registry import get_source_registry
+    """Triggers live ingestion from job board(s). Enqueues to Redis worker by default."""
+    from app.core.rate_limiter import check_rate_limit
+    from app.services.queue_service import task_queue
+
+    # Rate limiting on sync: max 10 sync calls per 60s
+    allowed, remaining = await check_rate_limit("sync_jobs", limit=10, window_seconds=60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Sync rate limit exceeded. Please wait a minute.")
 
     # Clamp freshness_hours to allowed values
     allowed_freshness = [1, 4, 8, 12, 16, 24]
     if freshness_hours not in allowed_freshness:
         freshness_hours = min(allowed_freshness, key=lambda x: abs(x - freshness_hours))
 
-    registry = get_source_registry()
-    sources_to_sync = []
-    source_clean = source.lower().strip()
+    source_clean = source.strip().lower()
 
-    if source_clean == "all":
+    if async_mode:
+        job_id = await task_queue.enqueue(
+            task_type="sync_source",
+            payload={"source": source_clean, "freshness_hours": freshness_hours},
+        )
+        if job_id:
+            response.status_code = 202
+            return {
+                "job_id": job_id,
+                "status": "queued",
+                "source": source_clean,
+                "freshness_hours": freshness_hours,
+                "message": "Job enqueued for background worker processing.",
+            }
+        logger.warning("redis_queue_unavailable_falling_back_to_sync")
+
+    # Synchronous fallback if async_mode=False or Redis enqueue failed
+    response.status_code = 200
+    from app.services.job_ingestion_service import JobIngestionService
+    from app.sources.base import JobSearchQuery
+    from app.sources.registry import get_source_registry
+    from app.core.cache import invalidate_cache
+
+    registry = get_source_registry()
+
+    sources_to_sync = []
+    if source_clean in ["all", "*", ""]:
         sources_to_sync = registry.get_enabled_sources()
     else:
         src = registry.get_source(source_clean)
@@ -611,6 +673,10 @@ async def trigger_job_sync(
             aggregated_stats["status"] = "failed"
     else:
         aggregated_stats["status"] = "failed"
+
+    # Invalidate cached queries on fresh sync
+    await invalidate_cache("stats:*")
+    await invalidate_cache("query:*")
 
     return aggregated_stats
 

@@ -26,6 +26,17 @@ class Preference(Base):
     excluded_companies: Mapped[list[str]] = mapped_column(JSONB, default=list)
 
     match_threshold: Mapped[int] = mapped_column(Integer, default=60)
+    sync_interval_hours: Mapped[int] = mapped_column(Integer, default=24)
+    auto_sync_enabled: Mapped[bool] = mapped_column(default=True)
+    last_auto_sync_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+    # Dynamic AI Provider Overrides (Phase 39)
+    ai_provider: Mapped[str | None] = mapped_column(nullable=True, default=None)
+    ai_model: Mapped[str | None] = mapped_column(nullable=True, default=None)
+    ai_base_url: Mapped[str | None] = mapped_column(nullable=True, default=None)
+    ai_api_key: Mapped[str | None] = mapped_column(nullable=True, default=None)
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

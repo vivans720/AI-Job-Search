@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5432
     DATABASE_URL: str = "postgresql+asyncpg://jobagent:password@localhost:5432/jobagent"
 
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     # Freshness (backend enforced)
     FRESHNESS_HOURS: int = 24
     DEFAULT_TIMEZONE: str = "Asia/Kolkata"
@@ -41,19 +44,44 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384
 
-    # LLM Provider Selection
+    # LLM Provider Selection (ollama | openai | gemini | anthropic | openai_compatible | omniroute)
     LLM_PROVIDER: str = "ollama"
 
-    # Ollama (Primary)
+    # Ollama (Primary local)
     OLLAMA_BASE_URL: str = "http://localhost:11434/v1"
     OLLAMA_MODEL: str = "qwen3.5:9b"
     OLLAMA_CONTEXT_WINDOW: int = 16384
     OLLAMA_TIMEOUT: float = 60.0
 
-    # OmniRoute / OpenAI Compatible (Fallback)
+    # OpenAI
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+    OPENAI_TIMEOUT: float = 45.0
+
+    # Gemini (Google GenAI OpenAI-compatible endpoint or native)
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    GEMINI_TIMEOUT: float = 45.0
+
+    # Anthropic Claude
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-3-5-haiku-20241022"
+    ANTHROPIC_BASE_URL: str = "https://api.anthropic.com/v1"
+    ANTHROPIC_TIMEOUT: float = 45.0
+
+    # DeepSeek
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
+    DEEPSEEK_TIMEOUT: float = 45.0
+
+    # OmniRoute / Generic OpenAI Compatible (Fallback / Self-hosted proxy)
     LLM_BASE_URL: str = "http://localhost:20128/v1"
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "auto/best-fast"
+    LLM_TIMEOUT: float = 45.0
 
     # LLM Skill Extraction Fallback
     LLM_SKILL_EXTRACTION_ENABLED: bool = True

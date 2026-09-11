@@ -18,6 +18,11 @@ def log_sync_event(stats: dict[str, Any], log_file: Path | None = None) -> dict[
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": stats.get("source", "unknown"),
+        "status": stats.get("status", "success"),
+        "error": stats.get("error"),
+        "error_category": stats.get("error_category"),
+        "duration_ms": stats.get("duration_ms", 0.0),
+        "retries_count": stats.get("retries_count", 0),
         "total_discovered": stats.get("total_discovered", 0),
         "filtered_by_validation": stats.get("filtered_by_validation", 0),
         "filtered_by_freshness": stats.get("filtered_by_freshness", 0),
@@ -29,6 +34,7 @@ def log_sync_event(stats: dict[str, Any], log_file: Path | None = None) -> dict[
         "updated_existing": stats.get("updated_existing", 0),
         "saved_jobs": stats.get("saved_jobs", 0),
         "saved_internships": stats.get("saved_internships", 0),
+        "metrics": stats.get("metrics", {}),
     }
 
     try:

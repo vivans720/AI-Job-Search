@@ -26,10 +26,20 @@ Personal AI-powered job discovery and recommendation engine for the Indian job m
 
 ## Quick Start
 
-### 1. Start PostgreSQL with pgvector
+### Full-Stack Docker Deployment (One Command)
 ```bash
-docker compose up -d postgres
+docker compose up -d
+# or: make docker-up
 ```
+Starts `postgres` (pgvector), `redis`, `backend` (FastAPI with auto-migrations), `worker`, and `frontend` (Next.js 15).
+
+Or start individual services manually:
+
+### 1. Start Database Container
+```bash
+docker compose up -d postgres redis
+```
+
 
 ### 2. Configure Environment
 ```bash
@@ -238,3 +248,14 @@ Frontend production build check:
 cd frontend && npm run build
 # 13/13 static pages compiled successfully (0 errors, 0 warnings)
 ```
+
+---
+
+## Documentation Links
+
+- [Development & Onboarding Guide](docs/development_guide.md)
+- [Architecture Overview](docs/architecture.md)
+- [AI & Matching Engine Formulation](docs/ai_architecture.md)
+- [Crawling, Scraping & Ingestion Pipeline](docs/crawling_and_ingestion.md)
+- [Contributing Guidelines](CONTRIBUTING.md)
+- [License (MIT)](LICENSE)

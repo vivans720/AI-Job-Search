@@ -16,6 +16,8 @@ from app.services.dedup_service import compute_job_hash
 from app.services.freshness_service import get_freshness_service
 from app.sources.adapters.internshala import is_senior_title
 from app.sources.base import JobSearchQuery, JobSource, NormalizedJob, RawJob
+from app.sources.errors import RateLimitBlockError, TransientNetworkError, classify_error
+from app.sources.rate_limiter import get_source_rate_limiter
 from app.crawling.crawler_registry import get_crawler_provider
 from app.crawling.crawler_models import CrawlRequest
 from app.utils.normalization import (
@@ -127,6 +129,7 @@ class NaukriAdapter(JobSource):
     source_name: str = "naukri"
 
     def __init__(self, settings: Any = None, timeout: float = 10.0, max_retries: int = 2):
+        super().__init__()
         from app.config import settings as default_settings
         self.settings = settings or default_settings
         self.timeout = timeout
@@ -154,6 +157,9 @@ class NaukriAdapter(JobSource):
         if provider is None or type(provider).__name__ == "NoOpCrawlerProvider":
             return None
         try:
+            limiter = get_source_rate_limiter(self.source_name)
+            await limiter.acquire()
+            self._metrics.requests_count += 1
             logger.info("naukri_crawl4ai_fetch_started", url=target_url, timeout=timeout)
             result = await asyncio.wait_for(
                 provider.fetch(CrawlRequest(
@@ -172,6 +178,8 @@ class NaukriAdapter(JobSource):
                     html_len=len(result.html),
                     duration_sec=result.duration_sec,
                 )
+                self.status = "ok"
+                self._metrics.status = "ok"
                 return result.html
             logger.warning(
                 "naukri_crawl4ai_fetch_failed",
@@ -235,18 +243,46 @@ class NaukriAdapter(JobSource):
 
     async def _fetch_url(self, target_url: str, headers: dict[str, str] | None = None) -> tuple[int, str]:
         """
-        HTTP fetch with exponential backoff and anti-bot error handling.
+        HTTP fetch with rate limiting, exponential backoff, and anti-bot error handling.
         Returns (status_code, body).
         """
         from app.utils.http_client import resilient_fetch
-        result = await resilient_fetch(
-            target_url,
-            headers=headers or HEADERS,
-            timeout=self.timeout,
-            max_retries=self.max_retries,
-            caller_tag="naukri_adapter",
-        )
-        return result.status_code, result.text
+
+        limiter = get_source_rate_limiter(self.source_name)
+        await limiter.acquire()
+        self._metrics.requests_count += 1
+
+        try:
+            result = await resilient_fetch(
+                target_url,
+                headers=headers or HEADERS,
+                timeout=self.timeout,
+                max_retries=self.max_retries,
+                caller_tag="naukri_adapter",
+            )
+            self._metrics.retries_count += getattr(result, "retry_count", 0)
+            if result.status_code in (403, 429) or result.is_blocked:
+                self.status = "blocked"
+                self.last_error = f"HTTP {result.status_code} - blocked by Naukri perimeter"
+                self.last_error_category = "rate_limit_block"
+                self._metrics.status = "blocked"
+                self._metrics.last_error = self.last_error
+                self._metrics.last_error_category = self.last_error_category
+            elif result.is_success:
+                self.status = "ok"
+                self._metrics.status = "ok"
+
+            return result.status_code, result.text
+        except Exception as exc:
+            classified = classify_error(exc, self.source_name)
+            self.last_error = classified.message
+            self.last_error_category = classified.category.value
+            self.status = "degraded" if classified.retryable else "failed"
+            self._metrics.status = self.status
+            self._metrics.last_error = self.last_error
+            self._metrics.last_error_category = self.last_error_category
+            logger.warning("naukri_fetch_exception", error=str(exc), category=classified.category.value)
+            return 0, ""
 
     def _extract_next_data_payload(self, html: str) -> list[RawJob]:
         """
@@ -537,96 +573,114 @@ class NaukriAdapter(JobSource):
             # For early-career searches (experience_max <= 2), avoid forcing &experience=0
             # which blinds Naukri search to only postings explicitly tagged "Fresher"
             if query.experience_max is not None and query.experience_max > 2:
-                exp_api_param = f"&experience={query.experience_max}"
-                exp_web_param = f"experience={query.experience_max}&"
-            else:
-                exp_api_param = ""
-                exp_web_param = ""
+        # For early-career searches (experience_max <= 2), avoid forcing &experience=0
+        # which blinds Naukri search to only postings explicitly tagged "Fresher"
+        if query.experience_max is not None and query.experience_max > 2:
+            exp_api_param = f"&experience={query.experience_max}"
+            exp_web_param = f"experience={query.experience_max}&"
+        else:
+            exp_api_param = ""
+            exp_web_param = ""
 
-            for page_no in range(1, max_pages + 1):
-                # Search URL format for Naukri desktop search
-                target_url = f"{BASE_URL}/jobapi/v3/search?noOfResults=20&urlType=search_by_keyword&searchType=adv&keyword={slug}&pageNo={page_no}&k={slug}{exp_api_param}&jobAge=1"
+        start_time = asyncio.get_event_loop().time()
+        try:
+            for term in queries:
+                for page_no in range(1, max_pages + 1):
+                    # 1. Primary path: Naukri Mobile/Gateway API (fast JSON response)
+                    api_url = (
+                        f"{BASE_URL}/jobapi/v3/search?noOfResults=20&urlType=search_by_keyword"
+                        f"&searchType=adv&keyword={quote_plus(term)}&pageNo={page_no}"
+                        f"&k={quote_plus(term)}&seoKey={quote_plus(term.lower().replace(' ', '-'))}-jobs"
+                        f"&src=jobsearchDesk&latLong="
+                    )
+                    if exp_api_param:
+                        api_url += f"&experience={exp_api_param}"
 
-                logger.info("naukri_fetch_query", query=term, page=page_no, url=target_url)
-                status, text = await self._fetch_url(target_url, headers=API_HEADERS)
+                    logger.info("naukri_fetch_query", query=term, page=page_no, url=api_url)
+                    status, text = await self._fetch_url(api_url, headers=API_HEADERS)
 
-                parsed: list[RawJob] = []
-                if status == 200 and text:
-                    try:
-                        data = json.loads(text)
-                        parsed = self.parse_json(data)
-                    except Exception as e:
-                        logger.warning("naukri_json_parse_failed", error=str(e), query=term, page=page_no)
-
-                # If API blocked or yielded 0 results on page 1, fall back to public web search page
-                if not parsed and page_no == 1:
-                    page_slug = term.lower().replace(" ", "-")
-                    page_url = f"{BASE_URL}/{page_slug}-jobs?{exp_web_param}jobAge=1"
-                    p_status, p_text = await self._fetch_url(page_url)
-                    if p_status == 200 and p_text:
-                        parsed = self.parse_html(p_text)
-
-                    # If static HTML returned unhydrated Next.js shell, hydrate via shared Crawl4AI provider
-                    if not parsed:
-                        logger.info("naukri_crawl4ai_fallback_activated", url=page_url, reason="static_html_unhydrated")
-                        browser_html = await self._fetch_via_crawl4ai(page_url)
-                        if browser_html:
-                            parsed = self.parse_html(browser_html)
-                elif not parsed and page_no > 1:
-                    page_slug = term.lower().replace(" ", "-")
-                    page_url = f"{BASE_URL}/{page_slug}-jobs-{page_no}?{exp_web_param}jobAge=1"
-                    p_status, p_text = await self._fetch_url(page_url)
-                    if p_status == 200 and p_text:
-                        parsed = self.parse_html(p_text)
-
-                    if not parsed:
-                        logger.info("naukri_crawl4ai_fallback_activated", url=page_url, page=page_no, reason="static_html_unhydrated")
-                        browser_html = await self._fetch_via_crawl4ai(page_url)
-                        if browser_html:
-                            parsed = self.parse_html(browser_html)
-
-                if not parsed:
-                    break
-
-                new_on_page = 0
-                page_fresh = 0
-                for r in parsed:
-                    # Fetch-time fast freshness filter
-                    p_at = None
-                    conf = "LOW"
-                    c_epoch = (r.raw_payload or {}).get("createdDate")
-                    if c_epoch:
+                    parsed: list[RawJob] = []
+                    if status == 200 and text:
                         try:
-                            c_val = float(str(c_epoch).strip()) if isinstance(c_epoch, str) else c_epoch
-                            if isinstance(c_val, (int, float)) and float(c_val) > 0:
-                                p_at = datetime.fromtimestamp(float(c_val) / 1000, tz=timezone.utc)
-                                conf = "HIGH"
-                        except Exception:
-                            p_at = None
+                            data = json.loads(text)
+                            parsed = self.parse_json(data)
+                        except Exception as e:
+                            self._metrics.parse_errors += 1
+                            logger.warning("naukri_json_parse_failed", error=str(e), query=term, page=page_no)
 
-                    if not p_at and r.posted_time_raw:
-                        p_at, conf = self.freshness_service.parse_recency_string(r.posted_time_raw)
+                    # If API blocked or yielded 0 results on page 1, fall back to public web search page
+                    if not parsed and page_no == 1:
+                        page_slug = term.lower().replace(" ", "-")
+                        page_url = f"{BASE_URL}/{page_slug}-jobs?{exp_web_param}jobAge=1"
+                        p_status, p_text = await self._fetch_url(page_url)
+                        if p_status == 200 and p_text:
+                            parsed = self.parse_html(p_text)
 
-                    ref_now = r.scraped_at or datetime.now(timezone.utc)
-                    if p_at and not self.freshness_service.is_fresh(p_at, conf, freshness_hours=self._freshness_hours, reference_now=ref_now):
-                        logger.debug("naukri_fetch_stale_skipped", title=r.title, posted_raw=r.posted_time_raw, cutoff=self._freshness_hours)
-                        continue
+                        # If static HTML returned unhydrated Next.js shell, hydrate via shared Crawl4AI provider
+                        if not parsed:
+                            logger.info("naukri_crawl4ai_fallback_activated", url=page_url, reason="static_html_unhydrated")
+                            browser_html = await self._fetch_via_crawl4ai(page_url)
+                            if browser_html:
+                                parsed = self.parse_html(browser_html)
+                    elif not parsed and page_no > 1:
+                        page_slug = term.lower().replace(" ", "-")
+                        page_url = f"{BASE_URL}/{page_slug}-jobs-{page_no}?{exp_web_param}jobAge=1"
+                        p_status, p_text = await self._fetch_url(page_url)
+                        if p_status == 200 and p_text:
+                            parsed = self.parse_html(p_text)
 
-                    page_fresh += 1
-                    dedup_key = r.source_job_id or r.source_url
-                    if dedup_key not in seen_job_ids:
-                        seen_job_ids.add(dedup_key)
-                        all_raw_jobs.append(r)
-                        new_on_page += 1
+                        if not parsed:
+                            logger.info("naukri_crawl4ai_fallback_activated", url=page_url, page=page_no, reason="static_html_unhydrated")
+                            browser_html = await self._fetch_via_crawl4ai(page_url)
+                            if browser_html:
+                                parsed = self.parse_html(browser_html)
 
-                if new_on_page == 0 or (page_no > 1 and page_fresh == 0):
-                    break
+                    if not parsed:
+                        break
 
-                # Polite delay between page requests
+                    new_on_page = 0
+                    page_fresh = 0
+                    for r in parsed:
+                        # Fetch-time fast freshness filter
+                        p_at = None
+                        conf = "LOW"
+                        c_epoch = (r.raw_payload or {}).get("createdDate")
+                        if c_epoch:
+                            try:
+                                c_val = float(str(c_epoch).strip()) if isinstance(c_epoch, str) else c_epoch
+                                if isinstance(c_val, (int, float)) and float(c_val) > 0:
+                                    p_at = datetime.fromtimestamp(float(c_val) / 1000, tz=timezone.utc)
+                                    conf = "HIGH"
+                            except Exception:
+                                p_at = None
+
+                        if not p_at and r.posted_time_raw:
+                            p_at, conf = self.freshness_service.parse_recency_string(r.posted_time_raw)
+
+                        ref_now = r.scraped_at or datetime.now(timezone.utc)
+                        if p_at and not self.freshness_service.is_fresh(p_at, conf, freshness_hours=self._freshness_hours, reference_now=ref_now):
+                            logger.debug("naukri_fetch_stale_skipped", title=r.title, posted_raw=r.posted_time_raw, cutoff=self._freshness_hours)
+                            continue
+
+                        page_fresh += 1
+                        dedup_key = r.source_job_id or r.source_url
+                        if dedup_key not in seen_job_ids:
+                            seen_job_ids.add(dedup_key)
+                            all_raw_jobs.append(r)
+                            new_on_page += 1
+
+                    if new_on_page == 0 or (page_no > 1 and page_fresh == 0):
+                        break
+
+                    # Polite delay between page requests
+                    await asyncio.sleep(0.5)
+
+                # Polite delay between query terms
                 await asyncio.sleep(0.5)
-
-            # Polite delay between query terms
-            await asyncio.sleep(0.5)
+        finally:
+            elapsed_ms = (asyncio.get_event_loop().time() - start_time) * 1000.0
+            self._metrics.duration_ms += elapsed_ms
+            self._metrics.raw_discovered = len(all_raw_jobs)
 
         logger.info("naukri_search_completed", total_discovered=len(all_raw_jobs))
         return all_raw_jobs

@@ -15,6 +15,8 @@ from app.config import settings as default_settings
 from app.services.dedup_service import compute_job_hash
 from app.services.freshness_service import get_freshness_service
 from app.sources.base import JobSearchQuery, JobSource, NormalizedJob, RawJob
+from app.sources.errors import RateLimitBlockError, TransientNetworkError, classify_error
+from app.sources.rate_limiter import get_source_rate_limiter
 from app.utils.browser_context import resolve_user_data_dir, persistent_browser_session
 from app.utils.browser_stealth import (
     DEFAULT_STEALTH_USER_AGENT,
@@ -196,6 +198,7 @@ class InternshalaAdapter(JobSource):
     enabled: bool = True
 
     def __init__(self, settings: Any = None, timeout: float = 12.0):
+        super().__init__()
         self.settings = settings or default_settings
         self.timeout = timeout
         self.enabled = getattr(self.settings, "SOURCE_INTERNSHALA_ENABLED", True)
@@ -344,15 +347,43 @@ class InternshalaAdapter(JobSource):
         return all_paths
 
     async def _fetch_url(self, target_url: str, max_attempts: int = 3) -> str | None:
-        """Automated text/HTTP fallback gate using resilient HTTP client."""
-        from app.utils.http_client import resilient_fetch_text
-        return await resilient_fetch_text(
-            target_url,
-            headers=HEADERS,
-            timeout=self.timeout,
-            max_retries=max_attempts,
-            caller_tag="internshala_adapter",
-        )
+        """Automated text/HTTP fallback gate using resilient HTTP client with rate limiting and metrics."""
+        from app.utils.http_client import resilient_fetch
+
+        limiter = get_source_rate_limiter(self.source_name)
+        await limiter.acquire()
+        self._metrics.requests_count += 1
+
+        try:
+            result = await resilient_fetch(
+                target_url,
+                headers=HEADERS,
+                timeout=self.timeout,
+                max_retries=max_attempts,
+                caller_tag="internshala_adapter",
+            )
+            self._metrics.retries_count += getattr(result, "retry_count", 0)
+            if result.status_code in (403, 429) or result.is_blocked:
+                self.status = "blocked"
+                self.last_error = f"HTTP {result.status_code} - blocked by Internshala perimeter"
+                self.last_error_category = "rate_limit_block"
+                self._metrics.status = "blocked"
+                self._metrics.last_error = self.last_error
+                self._metrics.last_error_category = self.last_error_category
+            elif result.is_success:
+                self.status = "ok"
+                self._metrics.status = "ok"
+            return result.text if result.is_success else None
+        except Exception as exc:
+            classified = classify_error(exc, self.source_name)
+            self.last_error = classified.message
+            self.last_error_category = classified.category.value
+            self.status = "degraded" if classified.retryable else "failed"
+            self._metrics.status = self.status
+            self._metrics.last_error = self.last_error
+            self._metrics.last_error_category = self.last_error_category
+            logger.warning("internshala_fetch_exception", error=str(exc), category=classified.category.value)
+            return None
 
     def detect_internshala_block_state(self, html: str) -> str | None:
         """Detects likely Internshala block/verify pages from HTML.
@@ -562,61 +593,66 @@ class InternshalaAdapter(JobSource):
                         consecutive_failures += 1
                         if consecutive_failures >= 2:
                             logger.warning(
-                                "internshala_repeated_connection_failures_aborting",
-                                consecutive_failures=consecutive_failures,
-                            )
-                            break
-                    break
+                        break
+                    consecutive_failures = 0
 
-                consecutive_failures = 0
-                page_cards = self.parse_html(html)
-                if not page_cards:
-                    break
+                    cards = self.parse_html(html)
+                    if not cards:
+                        break
 
-                page_fresh = 0
-                for r in page_cards:
-                    is_fresh = False
-                    if r.posted_time_raw:
-                        posted_at, conf = self.freshness_service.parse_relative_time(r.posted_time_raw)
+                    page_fresh = 0
+                    for r in cards:
+                        # Fetch-time fast freshness filter
+                        p_at, conf = None, "LOW"
+                        if r.posted_time_raw:
+                            p_at, conf = self.freshness_service.parse_recency_string(r.posted_time_raw)
+
                         ref_now = r.scraped_at or datetime.now(timezone.utc)
-                        if posted_at and self.freshness_service.is_fresh(posted_at, conf, freshness_hours=self._freshness_hours, reference_now=ref_now):
+                        is_fresh = False
+                        if p_at:
+                            is_fresh = self.freshness_service.is_fresh(p_at, conf, freshness_hours=self._freshness_hours, reference_now=ref_now)
+                        elif r.posted_time_raw and any(kw in r.posted_time_raw.lower() for kw in ("today", "just now", "few hours", "1 day")):
                             is_fresh = True
 
-                    # Discard stale cards immediately: prevents downstream expensive LLM skill extraction
-                    if not is_fresh:
-                        logger.debug("internshala_fetch_stale_skipped", title=r.title, posted_raw=r.posted_time_raw, cutoff=self._freshness_hours)
-                        continue
+                        # Discard stale cards immediately: prevents downstream expensive LLM skill extraction
+                        if not is_fresh:
+                            logger.debug("internshala_fetch_stale_skipped", title=r.title, posted_raw=r.posted_time_raw, cutoff=self._freshness_hours)
+                            continue
 
-                    page_fresh += 1
-                    dedup_key = r.source_job_id or r.source_url
-                    if dedup_key not in seen_job_ids:
-                        seen_job_ids.add(dedup_key)
-                        all_raw_jobs.append(r)
-                        cat_discovered += 1
-                        cat_fresh += 1
-                        if is_intern:
-                            internships_count += 1
-                        else:
-                            jobs_count += 1
+                        page_fresh += 1
+                        dedup_key = r.source_job_id or r.source_url
+                        if dedup_key not in seen_job_ids:
+                            seen_job_ids.add(dedup_key)
+                            all_raw_jobs.append(r)
+                            cat_discovered += 1
+                            cat_fresh += 1
+                            if is_intern:
+                                internships_count += 1
+                            else:
+                                jobs_count += 1
 
-                if page > 2 and page_fresh == 0:
-                    logger.info("internshala_pagination_early_stop", category=cat_slug, page=page, reason="No fresh cards after page 2")
+                    if page > 2 and page_fresh == 0:
+                        logger.info("internshala_pagination_early_stop", category=cat_slug, page=page, reason="No fresh cards after page 2")
+                        break
+
+                    await asyncio.sleep(0.5)
+
+                metric_entry = {
+                    "discovered": cat_discovered,
+                    "fresh": cat_fresh,
+                }
+                category_metrics[cat_slug] = metric_entry
+                if is_intern:
+                    internships_metrics[cat_slug] = metric_entry
+                else:
+                    jobs_metrics[cat_slug] = metric_entry
+
+                if consecutive_failures >= 2:
                     break
-
-                await asyncio.sleep(0.5)
-
-            metric_entry = {
-                "discovered": cat_discovered,
-                "fresh": cat_fresh,
-            }
-            category_metrics[cat_slug] = metric_entry
-            if is_intern:
-                internships_metrics[cat_slug] = metric_entry
-            else:
-                jobs_metrics[cat_slug] = metric_entry
-
-            if consecutive_failures >= 2:
-                break
+        finally:
+            elapsed_ms = (asyncio.get_event_loop().time() - start_time) * 1000.0
+            self._metrics.duration_ms += elapsed_ms
+            self._metrics.raw_discovered = len(all_raw_jobs)
 
         self.last_category_metrics = {
             "all": category_metrics,

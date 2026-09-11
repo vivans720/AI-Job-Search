@@ -16,6 +16,8 @@ from app.services.freshness_service import get_freshness_service
 from app.services.skill_extraction_service import get_skill_extraction_service
 from app.sources.adapters.internshala import is_senior_title
 from app.sources.base import JobSearchQuery, JobSource, NormalizedJob, RawJob
+from app.sources.errors import RateLimitBlockError, TransientNetworkError, classify_error
+from app.sources.rate_limiter import get_source_rate_limiter
 from app.utils.normalization import (
     categorize_role,
     extract_skills_from_text,
@@ -184,6 +186,7 @@ class LinkedInAdapter(JobSource):
         headless: bool = True,
         crawler_provider: Any | None = None,
     ):
+        super().__init__()
         self.timeout = timeout
         self.max_retries = max_retries
         self.tor_proxy_url = tor_proxy_url or getattr(settings, "TOR_PROXY_URL", "socks5://127.0.0.1:9050")
@@ -246,7 +249,7 @@ class LinkedInAdapter(JobSource):
 
     async def _fetch_url(self, target_url: str) -> str | None:
         """
-        Fetches URL using resilient HTTP client.
+        Fetches URL using resilient HTTP client with rate limiting and error classification.
         Gracefully handles 429 (rate limited) and 403 (anti-bot blocked) by falling
         back to local socket-level Tor SOCKS5 network proxy.
         """
@@ -256,20 +259,44 @@ class LinkedInAdapter(JobSource):
             resilient_fetch,
         )
 
-        result = await resilient_fetch(
-            target_url,
-            headers=GUEST_HEADERS,
-            timeout=self.timeout,
-            max_retries=self.max_retries,
-            caller_tag="linkedin_adapter",
-            enable_tor_fallback=True,
-        )
+        limiter = get_source_rate_limiter(self.source_name)
+        await limiter.acquire()
+        self._metrics.requests_count += 1
+
+        try:
+            result = await resilient_fetch(
+                target_url,
+                headers=GUEST_HEADERS,
+                timeout=self.timeout,
+                max_retries=self.max_retries,
+                caller_tag="linkedin_adapter",
+                enable_tor_fallback=True,
+            )
+            self._metrics.retries_count += getattr(result, "retry_count", 0)
+        except Exception as exc:
+            classified = classify_error(exc, self.source_name)
+            self.last_error = classified.message
+            self.last_error_category = classified.category.value
+            self.status = "degraded" if classified.retryable else "blocked"
+            self._metrics.status = self.status
+            self._metrics.last_error = self.last_error
+            self._metrics.last_error_category = self.last_error_category
+            logger.warning("linkedin_fetch_exception", error=str(exc), category=classified.category.value)
+            return None
 
         if result.is_success and result.text:
+            self.status = "ok"
+            self._metrics.status = "ok"
             return result.text
 
         # Explicit fallback if client received 429 / 403 and did not recover
         if result.status_code in (403, 429) or result.is_blocked or result.is_rate_limited:
+            self.status = "blocked"
+            self.last_error = f"HTTP {result.status_code} - rate limited / blocked"
+            self.last_error_category = "rate_limit_block"
+            self._metrics.status = "blocked"
+            self._metrics.last_error = self.last_error
+            self._metrics.last_error_category = self.last_error_category
             logger.warning(
                 "linkedin_rate_limited_or_blocked",
                 status_code=result.status_code,
@@ -286,6 +313,8 @@ class LinkedInAdapter(JobSource):
                 )
                 if tor_result and tor_result.is_success and tor_result.text:
                     logger.info("linkedin_tor_fallback_succeeded", url=target_url)
+                    self.status = "ok"
+                    self._metrics.status = "ok"
                     return tor_result.text
 
         return None
@@ -544,96 +573,102 @@ class LinkedInAdapter(JobSource):
         consecutive_failures = 0
         max_consecutive_failures = 2
 
-        for role in queries:
-            if consecutive_failures >= max_consecutive_failures:
-                logger.warning(
-                    "linkedin_search_circuit_breaker_triggered",
-                    reason="consecutive_query_failures",
-                    consecutive_failures=consecutive_failures,
-                    message="LinkedIn public search endpoints unavailable or blocked. Halting discovery to prevent hanging.",
-                )
-                break
-
-            role_slug = quote_plus(role.strip())
-            loc_slug = quote_plus(location.strip())
-            role_discovered = 0
-
-            for start_offset in offsets:
-                # Primary Fast Path
-                guest_api_url = (
-                    f"{GUEST_SEARCH_URL}?keywords={role_slug}&location={loc_slug}&f_TPR={f_tpr}&start={start_offset}"
-                )
-                html = await self._fetch_url(guest_api_url)
-
-                parsed: list[RawJob] = []
-                if html:
-                    parsed = self.parse_html(html)
-
-                # Rendered paths (only on first page if guest API fails):
-                # Crawl4AI shared provider first, legacy Playwright fallback second.
-                if not parsed and start_offset == 0:
-                    logger.info("linkedin_guest_api_miss_triggering_browser_fallback", role=role)
-                    public_search_url = (
-                        f"{PUBLIC_SEARCH_URL}?keywords={role_slug}&location={loc_slug}&f_TPR={f_tpr}"
+        start_time = asyncio.get_event_loop().time()
+        try:
+            for role in queries:
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.warning(
+                        "linkedin_search_circuit_breaker_triggered",
+                        reason="consecutive_query_failures",
+                        consecutive_failures=consecutive_failures,
+                        message="LinkedIn public search endpoints unavailable or blocked. Halting discovery to prevent hanging.",
                     )
-                    rendered_html = await self._fetch_via_crawl4ai(public_search_url)
-                    if not rendered_html:
-                        rendered_html = await self._fetch_via_browser(public_search_url)
-                    if rendered_html:
-                        parsed = self.parse_html(rendered_html)
-
-                if not parsed:
                     break
 
-                hydrate_count = 0
-                new_on_page = 0
-                for job in parsed:
-                    dedup_id = job.source_job_id or job.source_url
-                    if dedup_id in seen_job_ids:
-                        continue
+                role_slug = quote_plus(role.strip())
+                loc_slug = quote_plus(location.strip())
+                role_discovered = 0
 
-                    # Fetch-time fast freshness check: drop stale jobs before detail hydration and LLM extraction
-                    ref_time = job.scraped_at or datetime.now(timezone.utc)
-                    dt_attr = (job.raw_payload or {}).get("datetime")
-                    p_at, conf = None, "LOW"
-                    if job.posted_time_raw:
-                        p_at, conf = self.freshness_service.parse_relative_time(job.posted_time_raw.strip(), reference_now=ref_time)
-                    if not p_at and dt_attr:
-                        p_at, conf = self.freshness_service.parse_relative_time(str(dt_attr), reference_now=ref_time)
+                for start_offset in offsets:
+                    # Primary Fast Path
+                    guest_api_url = (
+                        f"{GUEST_SEARCH_URL}?keywords={role_slug}&location={loc_slug}&f_TPR={f_tpr}&start={start_offset}"
+                    )
+                    html = await self._fetch_url(guest_api_url)
 
-                    if p_at and not self.freshness_service.is_fresh(p_at, conf, freshness_hours=self._freshness_hours, reference_now=ref_time):
-                        logger.debug("linkedin_fetch_stale_skipped", title=job.title, posted_raw=job.posted_time_raw, cutoff=self._freshness_hours)
-                        continue
+                    parsed: list[RawJob] = []
+                    if html:
+                        parsed = self.parse_html(html)
 
-                    seen_job_ids.add(dedup_id)
-                    new_on_page += 1
+                    # Rendered paths (only on first page if guest API fails):
+                    # Crawl4AI shared provider first, legacy Playwright fallback second.
+                    if not parsed and start_offset == 0:
+                        logger.info("linkedin_guest_api_miss_triggering_browser_fallback", role=role)
+                        public_search_url = (
+                            f"{PUBLIC_SEARCH_URL}?keywords={role_slug}&location={loc_slug}&f_TPR={f_tpr}"
+                        )
+                        rendered_html = await self._fetch_via_crawl4ai(public_search_url)
+                        if not rendered_html:
+                            rendered_html = await self._fetch_via_browser(public_search_url)
+                        if rendered_html:
+                            parsed = self.parse_html(rendered_html)
 
-                    # Attempt detail hydration for fresh cards with short snippet descriptions (up to 20 per search query)
-                    if (not job.description or len(job.description.strip()) < 200) and job.source_url and hydrate_count < 20:
-                        try:
-                            hydrated = await self.get_job(job.source_url, use_browser=False)
-                            if hydrated and len(hydrated.description or "") > len(job.description or ""):
-                                all_raw_jobs.append(hydrated)
-                                hydrate_count += 1
-                                role_discovered += 1
-                                continue
-                        except Exception as e:
-                            logger.debug("linkedin_detail_hydration_failed", url=job.source_url, error=str(e))
+                    if not parsed:
+                        break
 
-                    all_raw_jobs.append(job)
-                    role_discovered += 1
+                    hydrate_count = 0
+                    new_on_page = 0
+                    for job in parsed:
+                        dedup_id = job.source_job_id or job.source_url
+                        if dedup_id in seen_job_ids:
+                            continue
 
-                if new_on_page == 0:
-                    break
+                        # Fetch-time fast freshness check: drop stale jobs before detail hydration and LLM extraction
+                        ref_time = job.scraped_at or datetime.now(timezone.utc)
+                        dt_attr = (job.raw_payload or {}).get("datetime")
+                        p_at, conf = None, "LOW"
+                        if job.posted_time_raw:
+                            p_at, conf = self.freshness_service.parse_relative_time(job.posted_time_raw.strip(), reference_now=ref_time)
+                        if not p_at and dt_attr:
+                            p_at, conf = self.freshness_service.parse_relative_time(str(dt_attr), reference_now=ref_time)
+
+                        if p_at and not self.freshness_service.is_fresh(p_at, conf, freshness_hours=self._freshness_hours, reference_now=ref_time):
+                            logger.debug("linkedin_fetch_stale_skipped", title=job.title, posted_raw=job.posted_time_raw, cutoff=self._freshness_hours)
+                            continue
+
+                        seen_job_ids.add(dedup_id)
+                        new_on_page += 1
+
+                        # Attempt detail hydration for fresh cards with short snippet descriptions (up to 20 per search query)
+                        if (not job.description or len(job.description.strip()) < 200) and job.source_url and hydrate_count < 20:
+                            try:
+                                hydrated = await self.get_job(job.source_url, use_browser=False)
+                                if hydrated and len(hydrated.description or "") > len(job.description or ""):
+                                    all_raw_jobs.append(hydrated)
+                                    hydrate_count += 1
+                                    role_discovered += 1
+                                    continue
+                            except Exception as e:
+                                logger.debug("linkedin_detail_hydration_failed", url=job.source_url, error=str(e))
+
+                        all_raw_jobs.append(job)
+                        role_discovered += 1
+
+                    if new_on_page == 0:
+                        break
+
+                    await asyncio.sleep(0.3)
+
+                if role_discovered > 0:
+                    consecutive_failures = 0
+                else:
+                    consecutive_failures += 1
 
                 await asyncio.sleep(0.3)
-
-            if role_discovered > 0:
-                consecutive_failures = 0
-            else:
-                consecutive_failures += 1
-
-            await asyncio.sleep(0.3)
+        finally:
+            elapsed_ms = (asyncio.get_event_loop().time() - start_time) * 1000.0
+            self._metrics.duration_ms += elapsed_ms
+            self._metrics.raw_discovered = len(all_raw_jobs)
 
         logger.info("linkedin_search_completed", total_discovered=len(all_raw_jobs))
         return all_raw_jobs

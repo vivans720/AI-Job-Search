@@ -1,190 +1,109 @@
-import json
-from abc import ABC, abstractmethod
 from typing import Any
 import structlog
-from openai import AsyncOpenAI, BadRequestError
 
 from app.config import settings
+from app.intelligence.base import BaseAIProvider, clean_and_extract_json
+from app.intelligence.providers.ollama_provider import OllamaProvider
+from app.intelligence.providers.openai_provider import OpenAIProvider
+from app.intelligence.providers.gemini_provider import GeminiProvider
+from app.intelligence.providers.anthropic_provider import AnthropicProvider
 
 logger = structlog.get_logger(__name__)
 
+# Backward compatibility alias
+LLMProvider = BaseAIProvider
+OllamaLLM = OllamaProvider
+OmniRouteLLM = OpenAIProvider
 
-class LLMProvider(ABC):
-    @abstractmethod
-    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
-        """Standard text completion."""
-        pass
-
-    @abstractmethod
-    async def complete_json(
-        self, messages: list[dict[str, str]], schema: type | dict | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
-        """JSON structured completion."""
-        pass
+_cached_providers: dict[str, BaseAIProvider] = {}
 
 
-class OllamaLLM(LLMProvider):
-    """LLM provider calling local Ollama (OpenAI-compatible) endpoint."""
+def create_ai_provider(
+    provider_name: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    timeout: float | None = None,
+) -> BaseAIProvider:
+    """Factory creating an AI provider instance from name and custom configuration."""
+    name = (provider_name or settings.LLM_PROVIDER).lower().strip()
 
-    def __init__(
-        self,
-        base_url: str | None = None,
-        model: str | None = None,
-    ):
-        self.base_url = base_url or settings.OLLAMA_BASE_URL
-        self.model = model or settings.OLLAMA_MODEL
-        self.client = AsyncOpenAI(
-            base_url=self.base_url,
-            api_key="ollama",
-            timeout=settings.OLLAMA_TIMEOUT,
+    if name in ("ollama", "local"):
+        return OllamaProvider(base_url=base_url, model=model, timeout=timeout)
+
+    elif name in ("openai",):
+        return OpenAIProvider(
+            base_url=base_url or settings.OPENAI_BASE_URL,
+            api_key=api_key or settings.OPENAI_API_KEY,
+            model=model or settings.OPENAI_MODEL,
+            timeout=timeout or settings.OPENAI_TIMEOUT,
+            provider_name="openai",
         )
 
-    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
-        model = kwargs.pop("model", self.model)
-        temperature = kwargs.pop("temperature", 0.2)
-        max_tokens = kwargs.pop("max_tokens", settings.OLLAMA_CONTEXT_WINDOW)
-
-        try:
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,  # type: ignore
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs,
-            )
-            content = response.choices[0].message.content or ""
-            return content.strip()
-        except Exception as e:
-            logger.error("ollama_complete_failed", error=str(e), model=model)
-            raise
-
-    async def complete_json(
-        self, messages: list[dict[str, str]], schema: type | dict | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
-        """Attempts response_format json_object; falls back to text extraction."""
-        model = kwargs.pop("model", self.model)
-        temperature = kwargs.pop("temperature", 0.1)
-        max_tokens = kwargs.pop("max_tokens", settings.OLLAMA_CONTEXT_WINDOW)
-
-        # Attempt structured JSON mode (Ollama may not support)
-        try:
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,  # type: ignore
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format={"type": "json_object"},
-                **kwargs,
-            )
-            raw = response.choices[0].message.content or "{}"
-            return json.loads(raw)
-        except BadRequestError as e:
-            logger.warning("ollama_json_mode_unsupported_fallback", error=str(e))
-            text = await self.complete(messages, model=model, temperature=temperature, max_tokens=max_tokens, **kwargs)
-            return self._extract_json_from_text(text)
-        except Exception as e:
-            logger.warning("ollama_json_mode_failed_fallback", error=str(e))
-            text = await self.complete(messages, model=model, temperature=temperature, max_tokens=max_tokens, **kwargs)
-            return self._extract_json_from_text(text)
-
-    def _extract_json_from_text(self, text: str) -> dict[str, Any]:
-        cleaned = text.strip()
-        if cleaned.startswith("```json"):
-            cleaned = cleaned[7:]
-        elif cleaned.startswith("```"):
-            cleaned = cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-        cleaned = cleaned.strip()
-
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return json.loads(cleaned[start : end + 1])
-        return json.loads(cleaned)
-
-
-class OmniRouteLLM(LLMProvider):
-    """LLM provider calling local OmniRoute (OpenAI-compatible) endpoint."""
-
-    def __init__(
-        self,
-        base_url: str | None = None,
-        api_key: str | None = None,
-        model: str | None = None,
-    ):
-        self.base_url = base_url or settings.LLM_BASE_URL
-        self.api_key = api_key or settings.LLM_API_KEY
-        self.model = model or settings.LLM_MODEL
-        self.client = AsyncOpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key or "sk-dummy-key",
+    elif name in ("gemini", "google"):
+        return GeminiProvider(
+            base_url=base_url or settings.GEMINI_BASE_URL,
+            api_key=api_key or settings.GEMINI_API_KEY,
+            model=model or settings.GEMINI_MODEL,
+            timeout=timeout or settings.GEMINI_TIMEOUT,
         )
 
-    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
-        model = kwargs.pop("model", self.model)
-        temperature = kwargs.pop("temperature", 0.2)
+    elif name in ("anthropic", "claude"):
+        return AnthropicProvider(
+            base_url=base_url or settings.ANTHROPIC_BASE_URL,
+            api_key=api_key or settings.ANTHROPIC_API_KEY,
+            model=model or settings.ANTHROPIC_MODEL,
+            timeout=timeout or settings.ANTHROPIC_TIMEOUT,
+        )
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,  # type: ignore
-                temperature=temperature,
-                **kwargs,
-            )
-            content = response.choices[0].message.content or ""
-            return content.strip()
-        except Exception as e:
-            logger.error("llm_complete_failed", error=str(e), model=model)
-            raise
+    elif name in ("deepseek",):
+        return OpenAIProvider(
+            base_url=base_url or settings.DEEPSEEK_BASE_URL,
+            api_key=api_key or settings.DEEPSEEK_API_KEY,
+            model=model or settings.DEEPSEEK_MODEL,
+            timeout=timeout or settings.DEEPSEEK_TIMEOUT,
+            provider_name="deepseek",
+        )
 
-    async def complete_json(
-        self, messages: list[dict[str, str]], schema: type | dict | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
-        """Attempts response_format json_object; falls back to text extraction."""
-        model = kwargs.pop("model", self.model)
-        temperature = kwargs.pop("temperature", 0.1)
+    elif name in ("omniroute", "openai_compatible", "generic", "vllm", "openrouter"):
+        return OpenAIProvider(
+            base_url=base_url or settings.LLM_BASE_URL,
+            api_key=api_key or settings.LLM_API_KEY,
+            model=model or settings.LLM_MODEL,
+            timeout=timeout or settings.LLM_TIMEOUT,
+            provider_name=name,
+        )
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,  # type: ignore
-                temperature=temperature,
-                response_format={"type": "json_object"},
-                **kwargs,
-            )
-            raw = response.choices[0].message.content or "{}"
-            return json.loads(raw)
-        except Exception as e:
-            logger.warning("json_mode_failed_attempting_fallback", error=str(e))
-            text = await self.complete(messages, model=model, temperature=temperature, **kwargs)
-            return self._extract_json_from_text(text)
-
-    def _extract_json_from_text(self, text: str) -> dict[str, Any]:
-        cleaned = text.strip()
-        if cleaned.startswith("```json"):
-            cleaned = cleaned[7:]
-        elif cleaned.startswith("```"):
-            cleaned = cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-        cleaned = cleaned.strip()
-
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return json.loads(cleaned[start : end + 1])
-        return json.loads(cleaned)
+    else:
+        logger.warning("unknown_provider_fallback_to_ollama", requested=name)
+        return OllamaProvider(base_url=base_url, model=model, timeout=timeout)
 
 
-_default_llm_provider: LLMProvider | None = None
+def get_llm_provider(
+    provider_name: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> BaseAIProvider:
+    """Returns a cached or dynamically configured AI provider singleton."""
+    global _cached_providers
+
+    # If dynamic custom config provided, do not cache global
+    if any([provider_name, model, base_url, api_key]):
+        return create_ai_provider(
+            provider_name=provider_name,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+        )
+
+    cache_key = "default"
+    if cache_key not in _cached_providers:
+        _cached_providers[cache_key] = create_ai_provider()
+    return _cached_providers[cache_key]
 
 
-def get_llm_provider() -> LLMProvider:
-    global _default_llm_provider
-    if _default_llm_provider is None:
-        if settings.LLM_PROVIDER == "ollama":
-            _default_llm_provider = OllamaLLM()
-        else:
-            _default_llm_provider = OmniRouteLLM()
-    return _default_llm_provider
+def reset_ai_provider_cache() -> None:
+    """Clear cached provider instances on configuration update."""
+    global _cached_providers
+    _cached_providers.clear()
