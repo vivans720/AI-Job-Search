@@ -27,6 +27,7 @@ from app.services.job_service import (
     get_saved_jobs_for_user,
     save_or_update_job_status,
     search_jobs_db,
+    unsave_job,
 )
 from app.services.matching_service import get_matching_service
 from app.services.preference_service import get_or_create_preferences
@@ -473,6 +474,24 @@ async def update_job_status_endpoint(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/jobs/{job_id}/saved")
+async def unsave_job_endpoint(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Remove a job from saved/tracked registry (unsave).
+    """
+    try:
+        parsed_id = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid job ID format")
+
+    user = await get_or_create_default_user(db)
+    removed = await unsave_job(db, user.id, parsed_id)
+    return {"job_id": job_id, "unsaved": removed}
 
 
 @router.post("/jobs/batch-status", response_model=BatchJobStatusResponse)

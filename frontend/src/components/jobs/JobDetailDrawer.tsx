@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Bookmark,
   BookmarkCheck,
+  Check,
   ThumbsDown,
   Building2,
   Sparkles,
@@ -73,7 +74,9 @@ interface JobDetailDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSave?: (job: JobDetailData) => void;
+  onUnsave?: (job: JobDetailData) => void;
   onReject?: (job: JobDetailData) => void;
+  onMarkApplied?: (job: JobDetailData) => void;
 }
 
 export default function JobDetailDrawer({
@@ -81,7 +84,9 @@ export default function JobDetailDrawer({
   isOpen,
   onClose,
   onSave,
+  onUnsave,
   onReject,
+  onMarkApplied,
 }: JobDetailDrawerProps) {
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -204,15 +209,34 @@ export default function JobDetailDrawer({
           <div className="px-6 py-3 border-b border-white/[0.06] bg-obsidian-900/30 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <button
-                onClick={() => onSave && onSave(job)}
+                onClick={() => {
+                  if (isSaved) {
+                    if (onUnsave) onUnsave(job);
+                  } else {
+                    if (onSave) onSave(job);
+                  }
+                }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
                   isSaved
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-rose-500/10 hover:text-rose-300 hover:border-rose-500/30"
                     : "bg-obsidian-900 text-zinc-300 border-white/[0.08] hover:text-emerald-300 hover:border-emerald-500/30"
                 }`}
+                title={isSaved ? "Click to unsave" : "Save job"}
               >
                 {isSaved ? <BookmarkCheck className="w-4 h-4 text-emerald-400" /> : <Bookmark className="w-4 h-4" />}
                 <span>{isSaved ? "Saved" : "Save Job"}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (onMarkApplied) onMarkApplied(job);
+                  onClose();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-xs font-semibold transition-all"
+                title="Mark as applied ✓ in tracking"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Applied ✓</span>
               </button>
 
               <button

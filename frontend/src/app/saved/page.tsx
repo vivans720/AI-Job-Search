@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bookmark, ExternalLink, Trash2, MapPin } from "lucide-react";
+import { Bookmark, BookmarkX, Check, ExternalLink, MapPin } from "lucide-react";
 
 interface SavedJob {
   saved_id: string;
@@ -61,6 +61,19 @@ export default function SavedPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        fetchSaved(activeTab);
+      }
+    } catch {
+      // Handle error
+    }
+  };
+
+  const unsaveJob = async (jobId: string) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/jobs/${jobId}/saved`, {
+        method: "DELETE",
       });
       if (res.ok) {
         fetchSaved(activeTab);
@@ -173,6 +186,26 @@ export default function SavedPage() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                  {item.status !== "APPLIED" ? (
+                    <button
+                      onClick={() => updateStatus(item.job_id, "APPLIED")}
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-medium transition-colors"
+                      title="Mark as Applied"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Applied ✓</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => updateStatus(item.job_id, "SAVED")}
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-medium transition-colors"
+                      title="Already applied. Click to move back to saved"
+                    >
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Applied</span>
+                    </button>
+                  )}
+
                   <select
                     value={item.status}
                     onChange={(e) => updateStatus(item.job_id, e.target.value)}
@@ -198,11 +231,11 @@ export default function SavedPage() {
                   </a>
 
                   <button
-                    onClick={() => updateStatus(item.job_id, "IGNORED")}
+                    onClick={() => unsaveJob(item.job_id)}
                     className="p-2 text-zinc-500 hover:text-rose-400 rounded-lg hover:bg-white/[0.04] transition-colors"
-                    title="Remove from active"
+                    title="Unsave (remove from registry)"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <BookmarkX className="w-4 h-4" />
                   </button>
                 </div>
               </div>

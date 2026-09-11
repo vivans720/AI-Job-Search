@@ -149,9 +149,9 @@ export default function JobsPage() {
   const [syncJobId, setSyncJobId] = useState<string | null>(null);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
 
-  // Action notification (Save, Reject, or Reject All) with Undo
+  // Action notification (Save, Reject, Applied, or Reject All) with Undo
   const [actionNotification, setActionNotification] = useState<{
-    type: "save" | "reject" | "reject_all";
+    type: "save" | "reject" | "applied" | "reject_all";
     message: string;
     jobIds: string[];
     jobs: JobItem[];
@@ -438,6 +438,36 @@ export default function JobsPage() {
     }
 
     // Auto-advance / replenish if page has no more jobs left and database still has more
+    if (remaining.length === 0 && newTotal > 0) {
+      const maxPages = Math.ceil(newTotal / pageSize);
+      const nextTargetPage = Math.min(currentPage, Math.max(1, maxPages));
+      fetchJobs(nextTargetPage);
+    }
+  };
+
+  const handleMarkApplied = async (job: JobItem) => {
+    const remaining = jobs.filter((j) => j.id !== job.id);
+    setJobs(remaining);
+    const newTotal = Math.max(0, totalCount - 1);
+    setTotalCount(newTotal);
+
+    setActionNotification({
+      type: "applied",
+      message: `Marked "${job.title}" as Applied ✓ in tracking pipeline.`,
+      jobIds: [job.id],
+      jobs: [job],
+    });
+
+    try {
+      await fetch(`http://localhost:8000/api/v1/jobs/${job.id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "APPLIED" }),
+      });
+    } catch {
+      // Handle error
+    }
+
     if (remaining.length === 0 && newTotal > 0) {
       const maxPages = Math.ceil(newTotal / pageSize);
       const nextTargetPage = Math.min(currentPage, Math.max(1, maxPages));
@@ -1351,11 +1381,19 @@ export default function JobsPage() {
                     >
                       <ThumbsDown className="w-4 h-4" />
                     </button>
+                    <button
+                      onClick={() => handleMarkApplied(job)}
+                      className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 transition-all text-xs font-semibold"
+                      title="Mark as Applied ✓ directly"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Applied ✓</span>
+                    </button>
                     <a
                       href={job.application_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-xl text-xs font-semibold transition-all shadow-sm"
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-xl text-xs font-semibold transition-all shadow-sm"
                     >
                       <span>Apply</span>
                       <ExternalLink className="w-3.5 h-3.5" />
@@ -1447,7 +1485,7 @@ export default function JobsPage() {
         }}
       />
 
-      {/* Phase 46: Job Detail Drawer */}
+      {/* Phase 46 & 47: Job Detail Drawer */}
       <JobDetailDrawer
         jobId={selectedJobId}
         isOpen={detailDrawerOpen}
@@ -1458,8 +1496,20 @@ export default function JobsPage() {
         onSave={(j) => {
           handleSave(j as JobItem);
         }}
+        onUnsave={async (j) => {
+          try {
+            await fetch(`http://localhost:8000/api/v1/jobs/${j.id}/saved`, {
+              method: "DELETE",
+            });
+          } catch {
+            // ignore
+          }
+        }}
         onReject={(j) => {
           handleReject(j as JobItem);
+        }}
+        onMarkApplied={(j) => {
+          handleMarkApplied(j as JobItem);
         }}
       />
     </div>

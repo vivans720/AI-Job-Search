@@ -348,8 +348,26 @@ async def save_or_update_job_status(
         "status": saved.status,
         "notes": saved.notes,
         "application_url": job.application_url,
-        "updated_at": saved.updated_at.isoformat(),
+        "updated_at": saved.updated_at.isoformat() if saved.updated_at else datetime.now(timezone.utc).isoformat(),
     }
+
+
+async def unsave_job(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    job_id: uuid.UUID,
+) -> bool:
+    """Remove a job from saved/tracked jobs for user."""
+    stmt = select(SavedJob).where(SavedJob.user_id == user_id, SavedJob.job_id == job_id)
+    result = await db.execute(stmt)
+    saved = result.scalar_one_or_none()
+    if not saved:
+        return False
+
+    await db.delete(saved)
+    await db.commit()
+    logger.info("job_unsaved", user_id=str(user_id), job_id=str(job_id))
+    return True
 
 
 async def batch_save_or_update_job_status(
