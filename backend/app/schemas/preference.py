@@ -17,6 +17,7 @@ class PreferenceUpdate(BaseModel):
     ai_model: str | None = None
     ai_base_url: str | None = None
     ai_api_key: str | None = None
+    setup_completed: bool | None = None
 
 
 class PreferenceResponse(BaseModel):
@@ -38,4 +39,15 @@ class PreferenceResponse(BaseModel):
     ai_model: str | None = None
     ai_base_url: str | None = None
     has_custom_api_key: bool = False
+    setup_completed: bool = False
     updated_at: datetime
+
+
+class SetupStatusResponse(BaseModel):
+    setup_completed: bool
+    has_profile: bool
+    has_resume: bool
+    has_ai_provider: bool
+    has_sources: bool
+    user_id: uuid.UUID
+    profile_summary: dict | None = None

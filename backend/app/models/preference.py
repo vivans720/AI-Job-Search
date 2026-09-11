@@ -38,6 +38,9 @@ class Preference(Base):
     ai_base_url: Mapped[str | None] = mapped_column(nullable=True, default=None)
     ai_api_key: Mapped[str | None] = mapped_column(nullable=True, default=None)
 
+    # First-Launch Onboarding (Phase 42)
+    setup_completed: Mapped[bool] = mapped_column(default=False)
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

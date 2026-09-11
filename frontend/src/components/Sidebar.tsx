@@ -8,6 +8,9 @@ import {
   Settings,
   Sparkles,
   ShieldCheck,
+  User,
+  FileText,
+  Wand2,
 } from "lucide-react";
 
 interface NavItem {
@@ -38,6 +41,9 @@ const navGroups: NavGroup[] = [
   {
     title: "CANDIDATE & SETUP",
     items: [
+      { href: "/profile", label: "Profile", icon: User },
+      { href: "/resume", label: "Resume", icon: FileText },
+      { href: "/setup", label: "Setup Wizard", icon: Wand2 },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },

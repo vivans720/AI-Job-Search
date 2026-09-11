@@ -1264,14 +1264,22 @@ export default function JobsPage() {
                 ? "Try checking other pages, clearing some filters, or syncing new jobs."
                 : "Try adjusting location segments, clearing skill tags, or resetting your filter criteria."}
             </p>
-            {hasActiveFilters && (
-              <button
-                onClick={resetAllFilters}
-                className="px-4 py-2 bg-white/[0.08] hover:bg-white/[0.12] text-zinc-200 rounded-xl text-xs font-medium transition-colors border border-white/[0.08]"
+            <div className="flex items-center justify-center gap-2 pt-2">
+              {hasActiveFilters && (
+                <button
+                  onClick={resetAllFilters}
+                  className="px-4 py-2 bg-white/[0.08] hover:bg-white/[0.12] text-zinc-200 rounded-xl text-xs font-medium transition-colors border border-white/[0.08]"
+                >
+                  Reset All Filters
+                </button>
+              )}
+              <Link
+                href="/setup"
+                className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl text-xs font-medium transition-colors border border-emerald-500/25"
               >
-                Reset All Filters
-              </button>
-            )}
+                Rerun Setup Wizard
+              </Link>
+            </div>
           </div>
 
           {/* Fallback pagination if listings exist on other pages */}
