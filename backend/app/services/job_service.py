@@ -272,6 +272,7 @@ async def get_job_by_id(db: AsyncSession, job_id: uuid.UUID) -> dict[str, Any] |
         "experience_max": job.experience_max,
         "experience_confidence": getattr(job, "experience_confidence", "LOW") or "LOW",
         "description_confidence": getattr(job, "description_confidence", "HIGH") or "HIGH",
+        "salary": job.salary_raw or "Not disclosed",
         "salary_min": job.salary_min,
         "salary_max": job.salary_max,
         "salary_raw": job.salary_raw or "Not disclosed",

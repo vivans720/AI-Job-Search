@@ -51,6 +51,8 @@ async def search_jobs_endpoint(
     sort_by: str = Query("match", description="Sort by 'match', 'freshness', or 'salary'"),
     source: str | None = Query(None, description="Filter by source board ('internshala', 'naukri', 'linkedin')"),
     exclude_unpaid: bool = Query(False, description="Filter out affirmatively unpaid positions"),
+    view: str = Query("all", description="View mode: 'all' or 'for_you' (personalized fit)"),
+    min_score: float | None = Query(None, description="Minimum overall match score filter"),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(50, ge=1, le=200, description="Items per page"),
     limit: int | None = Query(None, ge=1, le=200, description="Legacy limit override"),
@@ -140,7 +142,36 @@ async def search_jobs_endpoint(
         job_dict["saved_status"] = saved_map.get(job_id)
         results.append(job_dict)
 
-    if sort_by == "match" and profile:
+    # Phase 46: Personalized 'For You' view or min_score filtering
+    if view.lower() == "for_you" and profile:
+        # For You: candidate-personalized ranking, filter low affinity (< 40% match)
+        threshold = min_score if min_score is not None else 40.0
+        results = [
+            r for r in results
+            if r.get("match") and r["match"].overall_score >= threshold
+        ]
+        # In For You, sort primarily by match fit, then quality
+        results.sort(
+            key=lambda x: (
+                x["match"].overall_score if x.get("match") else 0.0,
+                x.get("quality_score", 0.0),
+            ),
+            reverse=True,
+        )
+    elif min_score is not None:
+        results = [
+            r for r in results
+            if r.get("match") and r["match"].overall_score >= min_score
+        ]
+        if sort_by == "match" and profile:
+            results.sort(
+                key=lambda x: (
+                    x["match"].overall_score if x.get("match") else 0.0,
+                    x.get("quality_score", 0.0),
+                ),
+                reverse=True,
+            )
+    elif sort_by == "match" and profile:
         results.sort(
             key=lambda x: (
                 x["match"].overall_score if x.get("match") else 0.0,

@@ -75,9 +75,10 @@ export default function WhyThisJobCard({ jobId, initialData, onClose }: WhyThisJ
         if (isMounted) {
           setData(json);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (isMounted) {
-          setError(err.message || "Failed to load explanation");
+          const msg = err instanceof Error ? err.message : "Failed to load explanation";
+          setError(msg);
         }
       } finally {
         if (isMounted) {

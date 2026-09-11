@@ -18,8 +18,12 @@ import {
   RotateCcw,
   Check,
   Ban,
+  Sparkles,
+  Eye,
+  SlidersHorizontal,
 } from "lucide-react";
 import { SyncProgressModal } from "@/components/SyncProgressModal";
+import JobDetailDrawer from "@/components/jobs/JobDetailDrawer";
 
 interface SkillPartition {
   matched: string[];
@@ -101,8 +105,17 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Phase 46: View Mode ('all' or 'for_you')
+  const [viewTab, setViewTab] = useState<"all" | "for_you">("all");
+  const [minScoreThreshold, setMinScoreThreshold] = useState<number>(40);
+
+  // Phase 46: Job Detail Drawer State
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
+
   // Search & Filters state
   const [query, setQuery] = useState("");
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [availableLocations, setAvailableLocations] = useState<string[]>([]);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
@@ -264,6 +277,10 @@ export default function JobsPage() {
     if (typeFilter !== "ALL") {
       params.set("employment_type", typeFilter);
     }
+    if (viewTab === "for_you") {
+      params.set("view", "for_you");
+      params.set("min_score", minScoreThreshold.toString());
+    }
     params.set("page", targetPage.toString());
     params.set("page_size", pageSize.toString());
 
@@ -341,7 +358,7 @@ export default function JobsPage() {
   useEffect(() => {
     fetchJobs(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceFilter, freshnessHours, sortBy, selectedLocations, experienceFilter, typeFilter]);
+  }, [viewTab, minScoreThreshold, sourceFilter, freshnessHours, sortBy, selectedLocations, experienceFilter, typeFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -355,6 +372,7 @@ export default function JobsPage() {
 
   const resetAllFilters = () => {
     setSelectedLocations([]);
+    setSelectedSkills([]);
     setLocationSearch("");
     setLocationDropdownOpen(false);
     setTypeFilter("ALL");
@@ -600,10 +618,17 @@ export default function JobsPage() {
       if (max < 3 && min < 3) return false;
     }
 
+    // Selected skill filtering (Phase 46)
+    if (selectedSkills.length > 0) {
+      const jobSkills = (job.required_skills || []).map((s) => s.toLowerCase());
+      const hasSkill = selectedSkills.every((sk) =>
+        jobSkills.some((js) => js.includes(sk.toLowerCase()))
+      );
+      if (!hasSkill) return false;
+    }
+
     return true;
   });
-
-
 
   const getBadgeStyle = (rec: string) => {
     switch (rec) {
@@ -622,6 +647,7 @@ export default function JobsPage() {
 
   const hasActiveFilters =
     selectedLocations.length > 0 ||
+    selectedSkills.length > 0 ||
     typeFilter !== "ALL" ||
     sourceFilter !== "ALL" ||
     experienceFilter !== "ALL" ||
@@ -832,6 +858,68 @@ export default function JobsPage() {
           </div>
         </div>
       )}
+
+      {/* Phase 46: Dual Views Tab Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1.5 rounded-2xl bg-obsidian-900/80 border border-white/[0.08] shadow-sm">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => {
+              setViewTab("all");
+              setCurrentPage(1);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+              viewTab === "all"
+                ? "bg-white/[0.12] text-white shadow-sm border border-white/[0.16]"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+            }`}
+          >
+            <Briefcase className="w-3.5 h-3.5 text-zinc-400" />
+            <span>All Fresh Jobs</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/[0.06] text-zinc-400 font-tabular font-medium">
+              {facets?.total ?? totalCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setViewTab("for_you");
+              setCurrentPage(1);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+              viewTab === "for_you"
+                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-surface-glow font-bold"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>For You (Personalized)</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-tabular font-medium border border-emerald-500/20">
+              Ranked Fit
+            </span>
+          </button>
+        </div>
+
+        {/* Min Score filter if in For You mode */}
+        {viewTab === "for_you" && (
+          <div className="flex items-center gap-2 px-3 py-1 text-xs text-zinc-400">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="text-[11px]">Fit Threshold:</span>
+            <select
+              value={minScoreThreshold}
+              onChange={(e) => {
+                setMinScoreThreshold(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="bg-obsidian-950 text-emerald-300 border border-white/[0.08] rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none"
+            >
+              <option value={30}>≥30% Match</option>
+              <option value={40}>≥40% Match (Recommended)</option>
+              <option value={60}>≥60% Strong Fit</option>
+              <option value={75}>≥75% High Affinity</option>
+            </select>
+          </div>
+        )}
+      </div>
 
       {/* Search Input */}
       <div className="p-4 rounded-2xl bg-obsidian-900/70 border border-white/[0.08] shadow-surface-inset">
@@ -1064,7 +1152,22 @@ export default function JobsPage() {
 
         {/* Filter Controls */}
         <div className="pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {selectedSkills.map((sk) => (
+              <span
+                key={sk}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-medium"
+              >
+                <span>Skill: {sk}</span>
+                <button
+                  onClick={() => setSelectedSkills((prev) => prev.filter((s) => s !== sk))}
+                  className="hover:text-white"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+
             {hasActiveFilters && (
               <button
                 onClick={resetAllFilters}
@@ -1125,7 +1228,13 @@ export default function JobsPage() {
 
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base font-semibold text-zinc-100 group-hover:text-emerald-400 transition-colors">
+                        <h3
+                          onClick={() => {
+                            setSelectedJobId(job.id);
+                            setDetailDrawerOpen(true);
+                          }}
+                          className="text-base font-semibold text-zinc-100 group-hover:text-emerald-400 transition-colors cursor-pointer hover:underline underline-offset-2"
+                        >
                           {job.title}
                         </h3>
 
@@ -1218,6 +1327,17 @@ export default function JobsPage() {
                   {/* Right Actions */}
                   <div className="flex items-center gap-2 shrink-0 self-end md:self-start">
                     <button
+                      onClick={() => {
+                        setSelectedJobId(job.id);
+                        setDetailDrawerOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-obsidian-950 border border-white/[0.08] text-zinc-300 hover:text-white hover:border-white/[0.18] transition-colors text-xs font-medium"
+                      title="Inspect full job description and match evidence"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>Details</span>
+                    </button>
+                    <button
                       onClick={() => handleSave(job)}
                       className="p-2 rounded-xl bg-obsidian-950 border border-white/[0.08] text-zinc-400 hover:text-emerald-400 hover:border-emerald-500/30 hover:bg-emerald-500/10 transition-colors"
                       title="Bookmark job (Save to Pipeline)"
@@ -1249,16 +1369,27 @@ export default function JobsPage() {
                     const sLower = s.toLowerCase();
                     const isMatched = match?.matched_skills?.some((m) => m.toLowerCase() === sLower);
 
+                    const isSelected = selectedSkills.includes(s);
+
                     return (
                       <span
                         key={s}
-                        className={`px-2.5 py-0.5 rounded-lg text-xs font-medium transition-colors ${
-                          isMatched
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedSkills((prev) =>
+                            prev.includes(s) ? prev.filter((item) => item !== s) : [...prev, s]
+                          );
+                        }}
+                        className={`px-2.5 py-0.5 rounded-lg text-xs font-medium transition-colors cursor-pointer hover:border-emerald-500/50 ${
+                          isSelected
+                            ? "bg-emerald-500 text-obsidian-950 font-bold border border-emerald-400"
+                            : isMatched
                             ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold"
                             : "bg-obsidian-950 text-zinc-400 border border-white/[0.06]"
                         }`}
+                        title={isSelected ? "Click to remove skill filter" : "Click to filter listings by this skill"}
                       >
-                        {s}
+                        {s} {isMatched && !isSelected && "✓"}
                       </span>
                     );
                   })}
@@ -1313,6 +1444,22 @@ export default function JobsPage() {
         source={syncSource}
         onSyncComplete={() => {
           fetchJobs(1);
+        }}
+      />
+
+      {/* Phase 46: Job Detail Drawer */}
+      <JobDetailDrawer
+        jobId={selectedJobId}
+        isOpen={detailDrawerOpen}
+        onClose={() => {
+          setDetailDrawerOpen(false);
+          setSelectedJobId(null);
+        }}
+        onSave={(j) => {
+          handleSave(j as JobItem);
+        }}
+        onReject={(j) => {
+          handleReject(j as JobItem);
         }}
       />
     </div>
