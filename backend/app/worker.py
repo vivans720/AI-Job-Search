@@ -62,6 +62,10 @@ async def process_sync_source_job(job, task_queue):
         "updated_existing": 0,
         "saved_jobs": 0,
         "saved_internships": 0,
+        "ai_extracted_skills": 0,
+        "normalized_skills": 0,
+        "embeddings_generated": 0,
+        "matches_evaluated": 0,
         "sources_synced": [],
         "sources": {},
         "failed_sources": [],
@@ -70,7 +74,16 @@ async def process_sync_source_job(job, task_queue):
 
     # Track incremental progress for UI/polling
     progress_tracker = {
-        s.source_name: {"status": "pending", "discovered": 0, "saved": 0, "updated": 0, "duplicates": 0, "rejected": 0}
+        s.source_name: {
+            "status": "pending",
+            "discovered": 0,
+            "saved": 0,
+            "updated": 0,
+            "duplicates": 0,
+            "rejected": 0,
+            "skills": 0,
+            "embeddings": 0,
+        }
         for s in sources_to_sync
     }
     await task_queue.set_job_status(job.id, "running", task_type=job.task_type, progress=progress_tracker)
@@ -97,6 +110,10 @@ async def process_sync_source_job(job, task_queue):
                     "updated_existing",
                     "saved_jobs",
                     "saved_internships",
+                    "ai_extracted_skills",
+                    "normalized_skills",
+                    "embeddings_generated",
+                    "matches_evaluated",
                 ]:
                     aggregated_stats[k] += stats.get(k, 0)
                 if stats.get("status") == "blocked":
@@ -120,6 +137,9 @@ async def process_sync_source_job(job, task_queue):
                 "accepted": stats.get("canonical_saved", 0) + stats.get("updated_existing", 0),
                 "duration_ms": stats.get("duration_ms", 0.0),
                 "retries": stats.get("retries_count", 0),
+                "skills": stats.get("ai_extracted_skills", 0) + stats.get("normalized_skills", 0),
+                "embeddings": stats.get("embeddings_generated", 0),
+                "matches": stats.get("matches_evaluated", 0),
             }
             if src_err:
                 report["error"] = src_err
@@ -134,6 +154,8 @@ async def process_sync_source_job(job, task_queue):
                 "updated": stats.get("updated_existing", 0),
                 "duplicates": stats.get("deduplicated", 0),
                 "rejected": stats.get("filtered_by_freshness", 0) + stats.get("filtered_by_validation", 0),
+                "skills": stats.get("ai_extracted_skills", 0) + stats.get("normalized_skills", 0),
+                "embeddings": stats.get("embeddings_generated", 0),
             }
             await task_queue.set_job_status(job.id, "running", task_type=job.task_type, progress=progress_tracker)
 
@@ -206,6 +228,23 @@ async def run_worker():
                             task_type=job.task_type,
                             result=result_stats,
                         )
+                    elif job.task_type == "enrich_job_intelligence":
+                        from app.database import async_session_factory
+                        from app.intelligence.extractors import enrich_job_record_llm
+                        import uuid as py_uuid
+                        job_id_str = job.payload.get("job_id")
+                        if not job_id_str:
+                            raise ValueError("job_id required for intelligence enrichment")
+                        parsed_jid = py_uuid.UUID(job_id_str)
+                        async with async_session_factory() as db:
+                            enrichment = await enrich_job_record_llm(parsed_jid, db)
+                            res = enrichment.model_dump() if enrichment else {"status": "job_not_found"}
+                            await task_queue.set_job_status(
+                                job.id,
+                                "completed",
+                                task_type=job.task_type,
+                                result=res,
+                            )
                     else:
                         logger.info("worker_unknown_job_type", task_type=job.task_type)
                         await task_queue.set_job_status(

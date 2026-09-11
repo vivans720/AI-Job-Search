@@ -2,6 +2,7 @@ import math
 import uuid
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
@@ -611,6 +612,10 @@ async def trigger_job_sync(
         "updated_existing": 0,
         "saved_jobs": 0,
         "saved_internships": 0,
+        "ai_extracted_skills": 0,
+        "normalized_skills": 0,
+        "embeddings_generated": 0,
+        "matches_evaluated": 0,
         "sources_synced": [],
         "sources": {},
         "failed_sources": [],
@@ -635,6 +640,10 @@ async def trigger_job_sync(
                 "updated_existing",
                 "saved_jobs",
                 "saved_internships",
+                "ai_extracted_skills",
+                "normalized_skills",
+                "embeddings_generated",
+                "matches_evaluated",
             ]:
                 aggregated_stats[k] += stats.get(k, 0)
             if stats.get("status") == "blocked":
@@ -767,5 +776,80 @@ async def trigger_agent_briefing(
         "top_matches": top_matches,
         "total_fresh_evaluated": len(scored),
     }
+
+
+class PipelineEnrichRequest(BaseModel):
+    job_ids: list[str] | None = None
+    limit: int = 20
+
+
+@router.post("/jobs/pipeline/enrich")
+async def trigger_pipeline_enrichment_endpoint(
+    req: PipelineEnrichRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Phase 43: Trigger Job Intelligence Pipeline enrichment on target jobs.
+    Runs AI extraction, skill normalization, 384d embedding, and match scoring.
+    """
+    from app.intelligence.extractors import enrich_job_record_llm
+    from app.intelligence.embedding_provider import get_embedding_provider
+    from app.models.candidate_profile import CandidateProfile
+
+    stmt = select(Job).where(Job.is_active == True)  # noqa: E712
+    if req.job_ids:
+        try:
+            parsed_ids = [uuid.UUID(jid) for jid in req.job_ids]
+            stmt = stmt.where(Job.id.in_(parsed_ids))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid job UUID in list")
+    else:
+        # Default to un-enriched jobs
+        stmt = stmt.order_by(desc(Job.created_at)).limit(min(req.limit, 50))
+
+    res = await db.execute(stmt)
+    jobs_to_enrich = res.scalars().all()
+
+    emb_provider = get_embedding_provider()
+    user = await get_or_create_default_user(db)
+    profile = await get_candidate_profile(db, user.id)
+    prefs = await get_or_create_preferences(db, user.id)
+    matching_svc = get_matching_service()
+
+    enriched_count = 0
+    embedded_count = 0
+    matched_count = 0
+
+    for job in jobs_to_enrich:
+        try:
+            # 1. AI Enrichment
+            enrichment = await enrich_job_record_llm(job.id, db)
+            if enrichment:
+                enriched_count += 1
+
+            # 2. Embedding
+            text = f"{job.normalized_title or job.title} at {job.company_name}. {job.description} Skills: {', '.join(job.required_skills or [])}"
+            emb = emb_provider.embed_text(text)
+            if emb:
+                job.embedding = emb
+                embedded_count += 1
+
+            # 3. Match calculation
+            if profile:
+                await matching_svc.get_or_calculate_match(db, job, profile, prefs)
+                matched_count += 1
+        except Exception as e:
+            logger.warning("pipeline_job_enrich_single_failed", job_id=str(job.id), error=str(e))
+
+    await db.commit()
+
+    return {
+        "status": "success",
+        "total_requested": len(jobs_to_enrich),
+        "ai_enriched": enriched_count,
+        "embeddings_generated": embedded_count,
+        "matches_evaluated": matched_count,
+    }
+
 
 

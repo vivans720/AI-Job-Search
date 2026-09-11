@@ -7,11 +7,18 @@ import structlog
 
 from app.database import async_session_factory
 from app.intelligence.embedding_provider import get_embedding_provider
+from app.intelligence.service import AIService
+from app.models.candidate_profile import CandidateProfile
 from app.models.company import Company
 from app.models.job import Job
+from app.models.preference import Preference
+from app.models.user import User
 from app.services.dedup_service import get_dedup_service
 from app.services.freshness_service import get_freshness_service
+from app.services.matching_service import get_matching_service
+from app.services.skill_extraction_service import get_skill_extraction_service
 from app.sources.base import JobSearchQuery, JobSource, NormalizedJob, RawJob
+from app.utils.normalization import normalize_skills
 from app.utils.sync_logger import log_sync_event
 from app.utils.type_normalization import make_json_serializable
 from app.utils.validation import validate_normalized_job
@@ -21,14 +28,18 @@ logger = structlog.get_logger(__name__)
 
 class JobIngestionService:
     """
-    Coordinates end-to-end ingestion pipeline:
-    Discovery -> Normalization -> 24h Freshness Filter -> 5-Level Dedup -> Vector Embedding -> Database Persistence
+    Coordinates end-to-end Phase 43 Job Intelligence Pipeline:
+    Discovery -> Normalization -> 24h Freshness Filter -> Fast L1-L4 Dedup ->
+    AI/Hybrid Skill Normalization & Extraction -> 384d Vector Embedding ->
+    Level 5 Semantic Dedup -> Database Persistence with Savepoints -> Candidate Match Evaluation
     """
 
     def __init__(self):
         self.freshness_service = get_freshness_service()
         self.dedup_service = get_dedup_service()
         self.embedding_provider = get_embedding_provider()
+        self.skill_extractor = get_skill_extraction_service()
+        self.matching_service = get_matching_service()
 
     async def ingest_source(
         self,
@@ -121,7 +132,53 @@ class JobIngestionService:
         # 4. Stage 1: Cheap deterministic deduplication (Levels 1-4: URL, Source ID, Meta, Fuzzy text)
         canonical_jobs, cheap_audit_log = self.dedup_service.deduplicate_batch(surviving_jobs)
 
-        # 5. Generate embeddings ONLY for surviving candidates (drastically saves compute)
+        # 5. Phase 43: AI & Hybrid Skill Extraction + Taxonomy Normalization on surviving canonical jobs
+        ai_extracted_count = 0
+        skills_normalized_count = 0
+
+        for j in canonical_jobs:
+            try:
+                # If skills are empty or minimally populated, trigger skill extraction
+                current_skills = j.required_skills or []
+                if not current_skills or len(current_skills) < 2:
+                    extracted = await self.skill_extractor.extract_skills(
+                        description=j.description,
+                        title=j.title,
+                        explicit_skills=current_skills,
+                    )
+                    if extracted.required_skills:
+                        j.required_skills = extracted.required_skills
+                        ai_extracted_count += 1
+                    if extracted.preferred_skills and not j.preferred_skills:
+                        j.preferred_skills = extracted.preferred_skills
+
+                # Always ensure all skills pass canonical taxonomy normalization
+                if j.required_skills:
+                    norm_req = normalize_skills(j.required_skills)
+                    if norm_req != j.required_skills:
+                        skills_normalized_count += 1
+                    j.required_skills = norm_req
+
+                if j.preferred_skills:
+                    norm_pref = normalize_skills(j.preferred_skills)
+                    j.preferred_skills = [p for p in norm_pref if p.lower() not in {r.lower() for r in j.required_skills}]
+
+            except Exception as ai_err:
+                logger.warning(
+                    "job_intelligence_skill_extraction_failed",
+                    source=source.source_name,
+                    title=j.title,
+                    error=str(ai_err),
+                )
+
+        logger.info(
+            "job_intelligence_pipeline_skills_processed",
+            source=source.source_name,
+            ai_extracted_count=ai_extracted_count,
+            skills_normalized_count=skills_normalized_count,
+        )
+
+        # 6. Generate dense 384d semantic vector embeddings for surviving candidates
         texts_to_embed = [
             f"{j.normalized_title} at {j.normalized_company}. {j.description} Skills: {', '.join(j.required_skills)}"
             for j in canonical_jobs
@@ -132,7 +189,7 @@ class JobIngestionService:
         except Exception as emb_err:
             logger.warning("embedding_generation_failed_continuing_without_embeddings", error=str(emb_err))
 
-        # 6. Stage 2: Semantic embedding deduplication (Level 5) on surviving candidates
+        # 7. Stage 2: Semantic embedding deduplication (Level 5) on surviving candidates
         if embeddings and len(canonical_jobs) > 1:
             canonical_jobs, semantic_audit_log = self.dedup_service.deduplicate_batch(
                 canonical_jobs, embeddings=embeddings
@@ -143,9 +200,11 @@ class JobIngestionService:
 
         deduplicated_count = len(audit_log)
 
-        # 7. Database Persistence with Savepoints (begin_nested)
+        # 8. Database Persistence with Savepoints (begin_nested)
         saved_count = 0
         updated_count = 0
+        persisted_job_entities: list[Job] = []
+
         for i, norm_job in enumerate(canonical_jobs):
             emb = embeddings[i] if i < len(embeddings) else None
 
@@ -181,7 +240,12 @@ class JobIngestionService:
                         if norm_job.posted_at and (not existing_job.posted_at or norm_job.posted_at > existing_job.posted_at):
                             existing_job.posted_at = norm_job.posted_at
                             existing_job.posted_at_confidence = norm_job.posted_at_confidence
+                        if norm_job.required_skills and not existing_job.required_skills:
+                            existing_job.required_skills = norm_job.required_skills
+                        if emb is not None and existing_job.embedding is None:
+                            existing_job.embedding = emb
                         updated_count += 1
+                        persisted_job_entities.append(existing_job)
                     else:
                         new_job = Job(
                             id=uuid.uuid4(),
@@ -225,6 +289,7 @@ class JobIngestionService:
                         )
                         db.add(new_job)
                         saved_count += 1
+                        persisted_job_entities.append(new_job)
             except Exception as single_err:
                 logger.warning(
                     "job_persistence_savepoint_failed",
@@ -235,6 +300,37 @@ class JobIngestionService:
                 continue
 
         await db.commit()
+
+        # 9. Phase 43: Candidate Matching Stage
+        # For default active user/profile, precalculate matches for saved jobs
+        matches_evaluated_count = 0
+        try:
+            user_stmt = select(User).limit(1)
+            user_res = await db.execute(user_stmt)
+            default_user = user_res.scalar_one_or_none()
+            if default_user:
+                prof_stmt = select(CandidateProfile).where(CandidateProfile.user_id == default_user.id)
+                prof_res = await db.execute(prof_stmt)
+                candidate_profile = prof_res.scalar_one_or_none()
+
+                pref_stmt = select(Preference).where(Preference.user_id == default_user.id)
+                pref_res = await db.execute(pref_stmt)
+                candidate_prefs = pref_res.scalar_one_or_none()
+
+                if candidate_profile and persisted_job_entities:
+                    for p_job in persisted_job_entities:
+                        try:
+                            await self.matching_service.get_or_calculate_match(
+                                db=db,
+                                job=p_job,
+                                profile=candidate_profile,
+                                preferences=candidate_prefs,
+                            )
+                            matches_evaluated_count += 1
+                        except Exception as m_err:
+                            logger.debug("job_matching_evaluation_skipped", job_id=str(p_job.id), error=str(m_err))
+        except Exception as match_stage_err:
+            logger.warning("matching_stage_post_ingest_failed", error=str(match_stage_err))
 
         saved_jobs_count = sum(1 for j in canonical_jobs if j.employment_type != "INTERNSHIP")
         saved_internships_count = sum(1 for j in canonical_jobs if j.employment_type == "INTERNSHIP")
@@ -257,6 +353,10 @@ class JobIngestionService:
             "updated_existing": updated_count,
             "saved_jobs": saved_jobs_count,
             "saved_internships": saved_internships_count,
+            "ai_extracted_skills": ai_extracted_count,
+            "normalized_skills": skills_normalized_count,
+            "embeddings_generated": len(embeddings),
+            "matches_evaluated": matches_evaluated_count,
             "duplicates_log": audit_log,
         }
         log_sync_event(stats)

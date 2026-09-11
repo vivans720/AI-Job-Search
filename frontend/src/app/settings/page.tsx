@@ -17,6 +17,7 @@ import {
   Wand2,
   BarChart3,
   Target,
+  Binary,
 } from "lucide-react";
 
 interface Preferences {
@@ -132,6 +133,35 @@ export default function AuditLogsPage() {
   const [evalReport, setEvalReport] = useState<EvaluationReport | null>(null);
   const [runningEval, setRunningEval] = useState<boolean>(false);
   const [loadingEvalReport, setLoadingEvalReport] = useState<boolean>(false);
+
+  // Phase 43 Job Intelligence Pipeline states
+  const [pipelineRunning, setPipelineRunning] = useState<boolean>(false);
+  const [pipelineResult, setPipelineResult] = useState<{
+    status: string;
+    total_requested: number;
+    ai_enriched: number;
+    embeddings_generated: number;
+    matches_evaluated: number;
+  } | null>(null);
+
+  const handleTriggerPipelineEnrich = async () => {
+    setPipelineRunning(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/jobs/pipeline/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 10 }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPipelineResult(data);
+      }
+    } catch {
+      // Ignored
+    } finally {
+      setPipelineRunning(false);
+    }
+  };
 
   const fetchPrefs = async () => {
     try {
@@ -817,6 +847,85 @@ export default function AuditLogsPage() {
         ) : (
           <div className="text-xs text-zinc-500 py-4 text-center font-mono bg-obsidian-950/30 rounded-xl border border-white/[0.04]">
             No evaluation benchmarks run yet. Click &quot;Run Benchmark&quot; above to test against gold-standard fixtures.
+          </div>
+        )}
+      </div>
+
+      {/* Phase 43: Job Intelligence Pipeline Control Card */}
+      <div className="p-6 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+              <Binary className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Phase 43 — Job Intelligence Pipeline</h3>
+              <p className="text-[11px] text-zinc-400">
+                Connects ingestion + AI skill normalization + 384d BGE embedding + savepoint persistence + 6D matching.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleTriggerPipelineEnrich}
+            disabled={pipelineRunning}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 rounded-xl text-xs font-medium transition-colors"
+          >
+            <Play className={`w-3.5 h-3.5 ${pipelineRunning ? "animate-spin" : ""}`} />
+            <span>{pipelineRunning ? "Enriching Pipeline..." : "Enrich Active Jobs"}</span>
+          </button>
+        </div>
+
+        {/* Pipeline Architecture Badges */}
+        <div className="p-3.5 rounded-xl bg-obsidian-950/40 border border-white/[0.04]">
+          <div className="text-[10px] font-mono text-zinc-400 uppercase mb-2">Connected Pipeline Flow:</div>
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-zinc-400">
+            <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">Raw Job</span>
+            <span className="text-zinc-600">→</span>
+            <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">Parser</span>
+            <span className="text-zinc-600">→</span>
+            <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">Normalizer</span>
+            <span className="text-zinc-600">→</span>
+            <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">Freshness (≤24h)</span>
+            <span className="text-zinc-600">→</span>
+            <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">Dedup L1-4</span>
+            <span className="text-zinc-600">→</span>
+            <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">AI Extraction</span>
+            <span className="text-zinc-600">→</span>
+            <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">BGE 384d</span>
+            <span className="text-zinc-600">→</span>
+            <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Savepoint Persist</span>
+            <span className="text-zinc-600">→</span>
+            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Candidate Matching</span>
+          </div>
+        </div>
+
+        {pipelineResult && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 bg-obsidian-950/60 border border-white/[0.06] rounded-xl">
+              <div className="text-[10px] uppercase font-mono text-zinc-400">Processed</div>
+              <div className="text-lg font-bold text-zinc-200 mt-1 font-mono">
+                {pipelineResult.total_requested}
+              </div>
+            </div>
+            <div className="p-3 bg-obsidian-950/60 border border-white/[0.06] rounded-xl">
+              <div className="text-[10px] uppercase font-mono text-purple-400">AI Enriched</div>
+              <div className="text-lg font-bold text-purple-400 mt-1 font-mono">
+                {pipelineResult.ai_enriched}
+              </div>
+            </div>
+            <div className="p-3 bg-obsidian-950/60 border border-white/[0.06] rounded-xl">
+              <div className="text-[10px] uppercase font-mono text-indigo-400">Embeddings</div>
+              <div className="text-lg font-bold text-indigo-400 mt-1 font-mono">
+                {pipelineResult.embeddings_generated}
+              </div>
+            </div>
+            <div className="p-3 bg-obsidian-950/60 border border-white/[0.06] rounded-xl">
+              <div className="text-[10px] uppercase font-mono text-emerald-400">Matches Evaluated</div>
+              <div className="text-lg font-bold text-emerald-400 mt-1 font-mono">
+                {pipelineResult.matches_evaluated}
+              </div>
+            </div>
           </div>
         )}
       </div>

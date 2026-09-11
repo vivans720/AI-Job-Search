@@ -16,6 +16,8 @@ export interface SourceProgress {
   updated: number;
   duplicates: number;
   rejected: number;
+  skills?: number;
+  embeddings?: number;
 }
 
 export interface SyncProgressModalProps {
@@ -35,9 +37,9 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
 }) => {
   const [status, setStatus] = useState<"queued" | "running" | "completed" | "failed">("queued");
   const [sourcesProgress, setSourcesProgress] = useState<Record<string, SourceProgress>>({
-    linkedin: { status: "pending", discovered: 0, saved: 0, updated: 0, duplicates: 0, rejected: 0 },
-    naukri: { status: "pending", discovered: 0, saved: 0, updated: 0, duplicates: 0, rejected: 0 },
-    internshala: { status: "pending", discovered: 0, saved: 0, updated: 0, duplicates: 0, rejected: 0 },
+    linkedin: { status: "pending", discovered: 0, saved: 0, updated: 0, duplicates: 0, rejected: 0, skills: 0, embeddings: 0 },
+    naukri: { status: "pending", discovered: 0, saved: 0, updated: 0, duplicates: 0, rejected: 0, skills: 0, embeddings: 0 },
+    internshala: { status: "pending", discovered: 0, saved: 0, updated: 0, duplicates: 0, rejected: 0, skills: 0, embeddings: 0 },
   });
   const [totals, setTotals] = useState({
     discovered: 0,
@@ -45,6 +47,8 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
     updated: 0,
     duplicates: 0,
     rejected: 0,
+    skills: 0,
+    embeddings: 0,
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -105,6 +109,8 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
               (resStats.filtered_by_freshness || 0) +
               (resStats.filtered_by_validation || 0) +
               (resStats.filtered_by_experience || 0),
+            skills: (resStats.ai_extracted_skills || 0) + (resStats.normalized_skills || 0),
+            embeddings: resStats.embeddings_generated || 0,
           });
 
           if (onSyncComplete) onSyncComplete();
@@ -120,13 +126,17 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
             sav = 0,
             upd = 0,
             dup = 0,
-            rej = 0;
+            rej = 0,
+            sk = 0,
+            em = 0;
           Object.values(data.progress as Record<string, SourceProgress>).forEach((sp) => {
             disc += sp.discovered || 0;
             sav += sp.saved || 0;
             upd += sp.updated || 0;
             dup += sp.duplicates || 0;
             rej += sp.rejected || 0;
+            sk += sp.skills || 0;
+            em += sp.embeddings || 0;
           });
           setTotals({
             discovered: disc,
@@ -134,6 +144,8 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
             updated: upd,
             duplicates: dup,
             rejected: rej,
+            skills: sk,
+            embeddings: em,
           });
         }
 
@@ -286,7 +298,31 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
             })}
           </div>
 
-          {/* Phase 38 Ingestion Stage Metrics Grid */}
+          {/* Phase 43 Pipeline Flow Architecture Badges */}
+          <div className="p-3.5 rounded-xl bg-obsidian-950/60 border border-white/[0.08] space-y-2">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-semibold block">
+              Phase 43 — Job Intelligence Pipeline Architecture
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-zinc-400">
+              <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">1. Parser</span>
+              <span className="text-zinc-600">→</span>
+              <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">2. Normalizer</span>
+              <span className="text-zinc-600">→</span>
+              <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">3. Freshness</span>
+              <span className="text-zinc-600">→</span>
+              <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">4. Dedup L1-4</span>
+              <span className="text-zinc-600">→</span>
+              <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">5. AI Extraction</span>
+              <span className="text-zinc-600">→</span>
+              <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">6. BGE 384d</span>
+              <span className="text-zinc-600">→</span>
+              <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">7. Savepoint Persist</span>
+              <span className="text-zinc-600">→</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">8. Match Scoring</span>
+            </div>
+          </div>
+
+          {/* Phase 38 & Phase 43 Ingestion Stage Metrics Grid */}
           <div>
             <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-400 mb-3">
               Ingestion Funnel Telemetry

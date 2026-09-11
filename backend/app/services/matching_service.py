@@ -428,20 +428,20 @@ class MatchingService:
         company_name: str,
         salary_max: float | None,
         minimum_salary_lpa: float | None,
-        priority_companies: list[str],
-        excluded_companies: list[str],
+        priority_companies: list[str] | None,
+        excluded_companies: list[str] | None,
     ) -> tuple[float, bool]:
         """Returns (pref_score, is_excluded_company)."""
         comp_lower = company_name.strip().lower()
 
         # Excluded company check
-        if any(exc.strip().lower() == comp_lower for exc in excluded_companies if exc.strip()):
+        if any(exc.strip().lower() == comp_lower for exc in (excluded_companies or []) if exc and exc.strip()):
             return 0.0, True
 
         score = 80.0  # Base neutral
 
         # Priority company bonus
-        if any(prio.strip().lower() in comp_lower for prio in priority_companies if prio.strip()):
+        if any(prio.strip().lower() in comp_lower for prio in (priority_companies or []) if prio and prio.strip()):
             score += 20.0
 
         # Salary check

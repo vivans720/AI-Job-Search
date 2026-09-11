@@ -550,50 +550,53 @@ class InternshalaAdapter(JobSource):
         max_jobs_quota = max(limit, 100)
         max_internships_quota = max(limit, 100)
         jobs_count = 0
-        internships_count = 0
+        start_time = asyncio.get_event_loop().time()
+        try:
+            for path in paths:
+                is_intern = path.startswith("/internships")
+                if not is_intern and jobs_count >= max_jobs_quota:
+                    continue
+                if is_intern and internships_count >= max_internships_quota:
+                    continue
 
-        for path in paths:
-            is_intern = path.startswith("/internships")
-            if not is_intern and jobs_count >= max_jobs_quota:
-                continue
-            if is_intern and internships_count >= max_internships_quota:
-                continue
+                cat_slug = (
+                    path.strip("/")
+                    .replace("internships/", "")
+                    .replace("jobs/", "")
+                    .replace("-internship", "")
+                    .replace("-jobs", "")
+                )
+                cat_discovered = 0
+                cat_fresh = 0
 
-            cat_slug = (
-                path.strip("/")
-                .replace("internships/", "")
-                .replace("jobs/", "")
-                .replace("-internship", "")
-                .replace("-jobs", "")
-            )
-            cat_discovered = 0
-            cat_fresh = 0
-
-            for page in range(1, max_pages_per_category + 1):
-                if page == 1:
-                    target_url = urljoin(BASE_URL, path)
-                else:
-                    target_url = urljoin(BASE_URL, f"{path.rstrip('/')}/page-{page}/")
-
-                logger.info("internshala_fetch_page", category=cat_slug, is_intern=is_intern, page=page, url=target_url)
-                html = await self._fetch_page(target_url)
-                if not html:
-                    # Fail fast on anti-bot / account-hold walls
-                    if self._blocked_state in {"ACCOUNT_HOLD", "RULE_VIOLATION", "VERIFY_OR_CAPTCHA"}:
-                        logger.error(
-                            "internshala_block_fail_fast_abort",
-                            category=cat_slug,
-                            is_intern=is_intern,
-                            page=page,
-                            block_state=self._blocked_state,
-                        )
-                        return []
-
+                for page in range(1, max_pages_per_category + 1):
                     if page == 1:
-                        consecutive_failures += 1
-                        if consecutive_failures >= 2:
-                            logger.warning(
+                        target_url = urljoin(BASE_URL, path)
+                    else:
+                        target_url = urljoin(BASE_URL, f"{path.rstrip('/')}/page-{page}/")
+
+                    logger.info("internshala_fetch_page", category=cat_slug, is_intern=is_intern, page=page, url=target_url)
+                    html = await self._fetch_page(target_url)
+                    if not html:
+                        # Fail fast on anti-bot / account-hold walls
+                        if self._blocked_state in {"ACCOUNT_HOLD", "RULE_VIOLATION", "VERIFY_OR_CAPTCHA"}:
+                            logger.error(
+                                "internshala_block_fail_fast_abort",
+                                category=cat_slug,
+                                is_intern=is_intern,
+                                page=page,
+                                block_state=self._blocked_state,
+                            )
+                            return []
+
+                        if page == 1:
+                            consecutive_failures += 1
+                            if consecutive_failures >= 2:
+                                logger.warning("internshala_consecutive_failures_abort", category=cat_slug)
+                                break
+                            break
                         break
+
                     consecutive_failures = 0
 
                     cards = self.parse_html(html)
