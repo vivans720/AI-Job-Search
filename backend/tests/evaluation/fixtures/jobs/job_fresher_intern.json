@@ -1,0 +1,16 @@
+{
+  "id": "job_fresher_intern_01",
+  "category": "job",
+  "title": "Software Engineering Intern - Frontend (React / TypeScript)",
+  "description": "Exciting internship opportunity for 2025/2026 graduating students and freshers! 0-1 years experience.\n\nAbout the Role:\nJoin our UI team to craft responsive interfaces using React, TypeScript, and Tailwind CSS.\n\nMandatory Requirements:\n- Fresher or final year student in CS/IT.\n- Good understanding of JavaScript, TypeScript, React, and CSS/HTML.\n- Knowledge of Git and GitHub.\n\nBonus Points:\n- Experience with Next.js or Vite.\n- Personal projects hosted on Vercel or Netlify.",
+  "ground_truth": {
+    "standardized_title": "Frontend Software Engineering Intern",
+    "role_category": "Frontend",
+    "seniority": "FRESHER",
+    "min_experience_years": 0,
+    "max_experience_years": 1,
+    "required_skills": ["JavaScript", "TypeScript", "React", "HTML", "CSS", "Git", "GitHub"],
+    "preferred_skills": ["Next.js", "Vite", "Vercel", "Netlify"],
+    "tech_stack": ["React", "TypeScript", "JavaScript", "Tailwind CSS", "HTML", "CSS", "Git", "GitHub", "Next.js", "Vite"]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "job_fastapi_backend_01",
+  "category": "job",
+  "title": "Backend Software Engineer - Python / FastAPI",
+  "description": "We are seeking a Mid-level Backend Engineer with 2-4 years experience building distributed backend systems.\n\nKey Responsibilities:\n- Build robust REST APIs using FastAPI and Python.\n- Work with PostgreSQL databases, Alembic migrations, and Redis caching.\n- Containerize services using Docker and deploy to AWS.\n\nRequired Qualifications:\n- 2+ years of software development experience.\n- Strong proficiency in Python, FastAPI, and PostgreSQL.\n- Hands-on experience with Docker, Git, and Linux.\n\nPreferred Qualifications:\n- Familiarity with Kubernetes and Celery.\n- Experience with GraphQL or gRPC is a plus.",
+  "ground_truth": {
+    "standardized_title": "Backend Software Engineer",
+    "role_category": "Backend",
+    "seniority": "MID",
+    "min_experience_years": 2,
+    "max_experience_years": 4,
+    "required_skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "Git", "Linux"],
+    "preferred_skills": ["Kubernetes", "Celery", "GraphQL", "gRPC"],
+    "tech_stack": ["Python", "FastAPI", "PostgreSQL", "Redis", "Docker", "AWS", "Git", "Linux", "Kubernetes", "Celery"]
+  }
+}

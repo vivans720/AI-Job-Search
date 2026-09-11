@@ -1,0 +1,15 @@
+{
+  "id": "resume_fresher_frontend_01",
+  "category": "resume",
+  "input_text": "Priya Sharma\nEmail: priya.sharma@example.com\nSummary: Fresher Frontend Web Developer graduating in 2026. Passionate about building modern UI.\nTechnical Skills:\n- Languages: JavaScript, TypeScript, HTML, CSS\n- Frameworks: React, Next.js, Tailwind CSS\n- Tools: Git, GitHub, VS Code, Figma\nProjects:\n- E-Commerce UI: Built with ReactJS and Tailwind CSS.\nEducation:\nB.Tech Computer Science (2022-2026) - 8.5 CGPA\nExperience: 0 years (Fresher seeking internship or entry-level frontend role)",
+  "ground_truth": {
+    "candidate_name": "Priya Sharma",
+    "experience_level": "FRESHER",
+    "experience_years": 0,
+    "target_roles": ["Frontend Developer", "Web Developer"],
+    "programming_languages": ["JavaScript", "TypeScript", "HTML", "CSS"],
+    "frameworks": ["React", "Next.js", "Tailwind CSS"],
+    "tools": ["Git", "GitHub", "Figma"],
+    "skills": ["UI", "Responsive Design"]
+  }
+}

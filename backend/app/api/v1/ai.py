@@ -176,3 +176,42 @@ async def enrich_stored_job_record(job_id: uuid.UUID, db: AsyncSession = Depends
     if not enriched:
         raise HTTPException(status_code=404, detail="Job not found")
     return enriched
+
+
+# =====================================================================
+# Phase 41 — AI Evaluation Framework Endpoints
+# =====================================================================
+
+class RunEvaluationRequest(BaseModel):
+    category: str = "all"  # "all" | "resumes" | "jobs"
+
+
+@router.post("/evaluation/run")
+async def run_evaluation_suite(req: RunEvaluationRequest):
+    """Phase 41: Runs AI evaluation benchmark across ground-truth fixtures and returns report."""
+    from app.intelligence.evaluation.runner import EvaluationRunner
+
+    runner = EvaluationRunner()
+    report = await runner.run_evaluation(category=req.category)
+    runner.save_report(report)
+    return report
+
+
+@router.get("/evaluation/report")
+async def get_latest_evaluation_report():
+    """Phase 41: Retrieves the latest evaluation benchmark report."""
+    from pathlib import Path
+    import json
+
+    report_path = Path(__file__).resolve().parent.parent.parent.parent / "data" / "eval_reports" / "latest_eval.json"
+    if not report_path.exists():
+        return {
+            "status": "not_run",
+            "message": "No evaluation run recorded yet. Call POST /api/v1/ai/evaluation/run to benchmark.",
+        }
+    try:
+        with open(report_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read evaluation report: {e}")
+

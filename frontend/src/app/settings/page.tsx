@@ -15,6 +15,8 @@ import {
   Globe,
   Sparkles,
   Wand2,
+  BarChart3,
+  Target,
 } from "lucide-react";
 
 interface Preferences {
@@ -57,6 +59,28 @@ interface SyncLogEntry {
   canonical_saved?: number;
   duration_ms?: number;
   error?: string;
+}
+
+interface EvaluationCase {
+  fixture_id: string;
+  category: string;
+  schema_valid: boolean;
+  latency_ms: number;
+  error?: string | null;
+  metrics?: Record<string, number>;
+}
+
+interface EvaluationReport {
+  timestamp: string;
+  total_fixtures: number;
+  schema_valid_rate: number;
+  avg_latency_ms: number;
+  total_duration_ms: number;
+  summary?: {
+    avg_resume_skill_f1?: number;
+    avg_job_required_skill_f1?: number;
+  };
+  cases?: EvaluationCase[];
 }
 
 export default function AuditLogsPage() {
@@ -103,6 +127,11 @@ export default function AuditLogsPage() {
     soft_skills?: string[];
   } | null>(null);
   const [testingExtractJob, setTestingExtractJob] = useState<boolean>(false);
+
+  // AI Evaluation Framework states (Phase 41)
+  const [evalReport, setEvalReport] = useState<EvaluationReport | null>(null);
+  const [runningEval, setRunningEval] = useState<boolean>(false);
+  const [loadingEvalReport, setLoadingEvalReport] = useState<boolean>(false);
 
   const fetchPrefs = async () => {
     try {
@@ -202,6 +231,42 @@ export default function AuditLogsPage() {
       // Error
     } finally {
       setTestingNormalize(false);
+    }
+  };
+
+  const fetchEvalReport = async () => {
+    setLoadingEvalReport(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/ai/evaluation/report");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status !== "not_run") {
+          setEvalReport(data);
+        }
+      }
+    } catch {
+      // Offline
+    } finally {
+      setLoadingEvalReport(false);
+    }
+  };
+
+  const handleRunEvaluation = async (category: string = "all") => {
+    setRunningEval(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/ai/evaluation/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEvalReport(data);
+      }
+    } catch {
+      // Error running eval
+    } finally {
+      setRunningEval(false);
     }
   };
 
@@ -328,6 +393,7 @@ export default function AuditLogsPage() {
     fetchAiProviders();
     fetchSchedule();
     fetchSyncHistory();
+    fetchEvalReport();
   }, []);
 
   if (loading) {
@@ -661,6 +727,98 @@ export default function AuditLogsPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Phase 41: AI Evaluation Framework Benchmark Card */}
+      <div className="p-6 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+              <BarChart3 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Phase 41 — AI Evaluation Framework</h3>
+              <p className="text-[11px] text-zinc-400">
+                Benchmark precision, recall, F1, and schema validity against gold-standard ground truth fixtures.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleRunEvaluation("all")}
+              disabled={runningEval}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-300 rounded-xl text-xs font-medium transition-colors"
+            >
+              <Play className={`w-3.5 h-3.5 ${runningEval ? "animate-spin" : ""}`} />
+              <span>{runningEval ? "Evaluating..." : "Run Benchmark"}</span>
+            </button>
+            <button
+              onClick={fetchEvalReport}
+              disabled={loadingEvalReport}
+              className="p-1.5 bg-obsidian-800 hover:bg-obsidian-700 border border-white/[0.08] text-zinc-300 rounded-xl transition-colors"
+              title="Refresh Benchmark Report"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingEvalReport ? "animate-spin text-amber-400" : ""}`} />
+            </button>
+          </div>
+        </div>
+
+        {evalReport ? (
+          <div className="space-y-4 pt-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 bg-obsidian-950/60 border border-white/[0.06] rounded-xl">
+                <div className="text-[10px] uppercase font-mono text-zinc-400">Schema Validity</div>
+                <div className="text-lg font-bold text-emerald-400 mt-1 font-mono">
+                  {Math.round((evalReport.schema_valid_rate || 0) * 100)}%
+                </div>
+              </div>
+              <div className="p-3 bg-obsidian-950/60 border border-white/[0.06] rounded-xl">
+                <div className="text-[10px] uppercase font-mono text-zinc-400">Avg Latency</div>
+                <div className="text-lg font-bold text-amber-400 mt-1 font-mono">
+                  {evalReport.avg_latency_ms} ms
+                </div>
+              </div>
+              <div className="p-3 bg-obsidian-950/60 border border-white/[0.06] rounded-xl">
+                <div className="text-[10px] uppercase font-mono text-zinc-400">Resume Skill F1</div>
+                <div className="text-lg font-bold text-cyan-400 mt-1 font-mono">
+                  {evalReport.summary?.avg_resume_skill_f1 ?? "N/A"}
+                </div>
+              </div>
+              <div className="p-3 bg-obsidian-950/60 border border-white/[0.06] rounded-xl">
+                <div className="text-[10px] uppercase font-mono text-zinc-400">Job Req Skill F1</div>
+                <div className="text-lg font-bold text-purple-400 mt-1 font-mono">
+                  {evalReport.summary?.avg_job_required_skill_f1 ?? "N/A"}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-obsidian-950/40 rounded-xl border border-white/[0.04]">
+              <div className="text-[11px] font-semibold text-zinc-300 mb-2 flex items-center gap-1.5">
+                <Target className="w-3.5 h-3.5 text-amber-400" />
+                <span>Test Cases Evaluated ({evalReport.cases?.length || 0})</span>
+              </div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {evalReport.cases?.map((c: EvaluationCase, i: number) => (
+                  <div key={i} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-obsidian-900/60 border border-white/[0.03]">
+                    <span className="font-mono text-zinc-300 truncate max-w-[200px]">{c.fixture_id}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.05] text-zinc-400 capitalize">{c.category}</span>
+                      <span className="font-mono text-[11px] text-zinc-400">{c.latency_ms}ms</span>
+                      <span className={`text-[11px] font-semibold ${c.schema_valid ? "text-emerald-400" : "text-rose-400"}`}>
+                        {c.schema_valid ? "VALID" : "INVALID"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-zinc-500 py-4 text-center font-mono bg-obsidian-950/30 rounded-xl border border-white/[0.04]">
+            No evaluation benchmarks run yet. Click &quot;Run Benchmark&quot; above to test against gold-standard fixtures.
+          </div>
+        )}
       </div>
 
       {/* Scheduler Configuration Card */}

@@ -1,0 +1,17 @@
+{
+  "id": "resume_backend_engineer_01",
+  "category": "resume",
+  "input_text": "Alex Kumar\nEmail: alex.kumar@example.com\nSummary: Python Backend Engineer with 3 years building scalable distributed microservices.\nSkills: Python, FastAPI, Django, PostgreSQL, Redis, Docker, Kubernetes, AWS (S3, EC2), Git, GitHub Actions, RESTful APIs, Microservices, CI/CD, SQL optimization.\nExperience:\nSoftware Engineer at DataTech (3 years)\n- Designed microservices with FastAPI and PostgreSQL.\nEducation:\nB.Tech in Computer Science (2023)",
+  "ground_truth": {
+    "candidate_name": "Alex Kumar",
+    "experience_level": "MID",
+    "experience_years": 3,
+    "target_roles": ["Backend Engineer", "Software Engineer"],
+    "programming_languages": ["Python"],
+    "frameworks": ["FastAPI", "Django"],
+    "databases": ["PostgreSQL", "Redis"],
+    "cloud": ["AWS", "Docker", "Kubernetes"],
+    "tools": ["Git", "GitHub Actions"],
+    "skills": ["REST APIs", "Microservices", "CI/CD", "SQL Optimization"]
+  }
+}
