@@ -30,5 +30,7 @@ class MatchBreakdown(BaseModel):
     transferable_details: list[TransferableDetail] = Field(default_factory=list)
     experience_eligible: bool = True
     location_eligible: bool = True
+    confidence: float = 1.0
+    confidence_label: str = "HIGH"
     explanation: str | None = None
     recommendation: str  # STRONG_MATCH, GOOD_MATCH, CONSIDER, LOW_PRIORITY, SKIP

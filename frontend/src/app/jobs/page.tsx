@@ -48,6 +48,8 @@ interface MatchBreakdown {
   transferable_details?: TransferableDetail[];
   experience_eligible?: boolean;
   location_eligible?: boolean;
+  confidence?: number;
+  confidence_label?: string;
   explanation: string;
   recommendation: string;
 }
@@ -1156,9 +1158,25 @@ export default function JobsPage() {
                         )}
 
                         {match && (
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold font-tabular border ${getBadgeStyle(match.recommendation)}`}>
-                            {match.overall_score}% {match.recommendation.replace("_", " ")}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold font-tabular border ${getBadgeStyle(match.recommendation)}`}>
+                              {match.overall_score}% {match.recommendation.replace("_", " ")}
+                            </span>
+                            {match.confidence_label && (
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase border ${
+                                  match.confidence_label === "HIGH"
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                    : match.confidence_label === "MEDIUM"
+                                    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                                    : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                                }`}
+                                title={`Matching Confidence: ${match.confidence !== undefined ? Math.round(match.confidence * 100) : 0}% (${match.confidence_label})`}
+                              >
+                                {match.confidence_label} Conf
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
 

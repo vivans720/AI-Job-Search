@@ -36,6 +36,9 @@ class Match(Base):
     missing_skills: Mapped[list[str]] = mapped_column(JSONB, default=list)
     transferable_skills: Mapped[list[str]] = mapped_column(JSONB, default=list)
 
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    confidence_label: Mapped[str] = mapped_column(String(20), default="HIGH")  # HIGH, MEDIUM, LOW
+
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     recommendation: Mapped[str] = mapped_column(String(50), default="CONSIDER")  # STRONG_MATCH, GOOD_MATCH, CONSIDER, LOW_PRIORITY, SKIP
 

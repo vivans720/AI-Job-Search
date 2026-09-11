@@ -129,6 +129,8 @@ async def search_jobs_endpoint(
                 transferable_details=eval_res.get("transferable_details", []),
                 experience_eligible=eval_res.get("experience_eligible", True),
                 location_eligible=eval_res.get("location_eligible", True),
+                confidence=eval_res.get("confidence", 1.0),
+                confidence_label=eval_res.get("confidence_label", "HIGH"),
                 explanation=eval_res["explanation"],
                 recommendation=eval_res["recommendation"],
             )

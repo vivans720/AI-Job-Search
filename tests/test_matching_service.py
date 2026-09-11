@@ -45,8 +45,8 @@ def create_mock_job(
         title=title,
         company_name=company_name,
         role_category="BACKEND",
-        required_skills=required_skills or ["Python", "FastAPI", "PostgreSQL"],
-        preferred_skills=preferred_skills or ["Docker", "Redis"],
+        required_skills=["Python", "FastAPI", "PostgreSQL"] if required_skills is None else required_skills,
+        preferred_skills=["Docker", "Redis"] if preferred_skills is None else preferred_skills,
         experience_min=experience_min,
         experience_max=experience_max,
         location=location,
@@ -453,3 +453,70 @@ def test_evaluate_job_with_nullable_experience():
     assert res["experience_score"] == 80.0
     assert "overall_score" in res
     assert res["overall_score"] > 0.0
+
+
+def test_phase44_confidence_and_structured_contract():
+    """Verify Phase 44 structured contract and confidence calculation."""
+    svc = MatchingService()
+    profile = create_mock_profile()
+
+    # Job with complete metadata & 3+ skills -> HIGH confidence
+    job_high = create_mock_job(
+        title="Backend Developer",
+        required_skills=["Python", "FastAPI", "PostgreSQL"],
+        preferred_skills=["Docker"],
+        experience_min=0,
+        experience_max=1,
+    )
+    job_high.description = "We are seeking a Backend Developer with strong Python, FastAPI, and PostgreSQL skills to join our production team."
+    job_high.experience_confidence = "HIGH"
+    job_high.description_confidence = "HIGH"
+
+    res_high = svc.evaluate_job(job_high, profile)
+    assert res_high["confidence"] >= 0.75
+    assert res_high["confidence_label"] == "HIGH"
+    assert "overall_score" in res_high
+    assert "required_skills" in res_high
+    assert "preferred_skills" in res_high
+    assert "transferable_skills" in res_high
+    assert "missing_skills" in res_high
+    assert "experience_match" in res_high
+    assert "location_match" in res_high
+    assert "preference_match" in res_high
+    assert "confidence" in res_high
+
+    # Job with zero extracted skills -> LOW confidence
+    job_low = create_mock_job(
+        title="Software Associate",
+        required_skills=[],
+        preferred_skills=[],
+        experience_min=None,
+        experience_max=None,
+    )
+    job_low.description = "Short description."
+    job_low.experience_confidence = "LOW"
+    job_low.description_confidence = "LOW"
+
+    res_low = svc.evaluate_job(job_low, profile)
+    assert res_low["confidence"] < 0.45
+    assert res_low["confidence_label"] == "LOW"
+    assert res_low["overall_score"] <= 45.0  # Anti-inflation capped
+
+
+def test_phase44_subdimension_breakdown():
+    """Verify subdimensions experience_match, location_match, preference_match structured values."""
+    svc = MatchingService()
+    profile = create_mock_profile(preferred_locations=["Bengaluru"])
+    job = create_mock_job(
+        title="Full Stack Engineer",
+        required_skills=["Python", "React"],
+        location="Bengaluru",
+        remote_type="ONSITE",
+    )
+    res = svc.evaluate_job(job, profile)
+    assert res["experience_match"]["eligible"] is True
+    assert res["experience_match"]["score"] == 100.0
+    assert res["location_match"]["eligible"] is True
+    assert res["location_match"]["score"] == 100.0
+    assert res["preference_match"]["eligible"] is True
+

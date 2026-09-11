@@ -455,6 +455,73 @@ class MatchingService:
 
         return max(0.0, min(100.0, score)), False
 
+    def compute_confidence(
+        self,
+        job: Job,
+        required_skills: list[str] | None,
+        preferred_skills: list[str] | None,
+    ) -> tuple[float, str]:
+        """
+        Computes match confidence score (0.0 to 1.0) and categorical label (HIGH, MEDIUM, LOW).
+        Evaluates data completeness:
+          - Extracted required skills count
+          - Experience specificity
+          - Description confidence
+        """
+        num_req = len(required_skills or [])
+        num_pref = len(preferred_skills or [])
+        total_skills = num_req + num_pref
+
+        # Skill clarity component (0.0 - 0.50)
+        if num_req >= 3:
+            skill_conf = 0.50
+        elif num_req >= 1:
+            skill_conf = 0.35
+        elif total_skills >= 1:
+            skill_conf = 0.25
+        else:
+            skill_conf = 0.05
+
+        # Experience clarity component (0.0 - 0.30)
+        exp_conf_val = (getattr(job, "experience_confidence", None) or "LOW").upper()
+        if job.experience_min is not None or job.experience_max is not None:
+            if exp_conf_val == "HIGH":
+                exp_conf = 0.30
+            elif exp_conf_val == "MEDIUM":
+                exp_conf = 0.25
+            else:
+                exp_conf = 0.20
+        elif job.employment_type == "INTERNSHIP":
+            exp_conf = 0.25
+        elif exp_conf_val == "HIGH":
+            exp_conf = 0.20
+        elif exp_conf_val == "MEDIUM":
+            exp_conf = 0.15
+        else:
+            exp_conf = 0.05
+
+        # Description / Metadata clarity component (0.0 - 0.20)
+        desc_conf_val = (getattr(job, "description_confidence", None) or "HIGH").upper()
+        desc_len = len(getattr(job, "description", "") or "")
+        if desc_conf_val == "HIGH" and desc_len >= 150:
+            meta_conf = 0.20
+        elif desc_len >= 80:
+            meta_conf = 0.15
+        else:
+            meta_conf = 0.05
+
+        raw_conf = skill_conf + exp_conf + meta_conf
+        confidence = round(max(0.1, min(1.0, raw_conf)), 2)
+
+        if confidence >= 0.75 and num_req >= 1:
+            label = "HIGH"
+        elif confidence >= 0.45:
+            label = "MEDIUM"
+        else:
+            label = "LOW"
+
+        return confidence, label
+
     def evaluate_job(
         self,
         job: Job,
@@ -598,12 +665,6 @@ class MatchingService:
         )
 
         # 9. Skill-First Weighted Calculation:
-        # Required Skills: 60%
-        # Preferred Skills: 15%
-        # Transferable Skills: 10%
-        # Experience: 5%
-        # Location: 5%
-        # Preference: 5%
         w_req = getattr(settings, "WEIGHT_REQUIRED_SKILL_MATCH", 0.60)
         w_pref_skill = getattr(settings, "WEIGHT_PREFERRED_SKILL_MATCH", 0.15)
         w_trans = getattr(settings, "WEIGHT_TRANSFERABLE_SKILL_MATCH", 0.10)
@@ -665,6 +726,11 @@ class MatchingService:
         else:
             recommendation = "SKIP"
 
+        # 12. Confidence Calculation
+        confidence, confidence_label = self.compute_confidence(
+            job, job.required_skills, job.preferred_skills
+        )
+
         # Deterministic explainability
         req_summary = f"{num_matched}/{num_req} required skills" if num_req else "no specific required skills listed"
         matched_str = ", ".join(matched_required) if matched_required else "none"
@@ -699,6 +765,20 @@ class MatchingService:
             "transferable_details": trans_details,
             "experience_eligible": not is_exp_excluded,
             "location_eligible": not is_loc_excluded,
+            "confidence": confidence,
+            "confidence_label": confidence_label,
+            "experience_match": {
+                "score": exp_score,
+                "eligible": not is_exp_excluded,
+            },
+            "location_match": {
+                "score": loc_score,
+                "eligible": not is_loc_excluded,
+            },
+            "preference_match": {
+                "score": pref_score,
+                "eligible": not is_comp_excluded and not is_unpaid_excluded,
+            },
             "explanation": explanation,
             "recommendation": recommendation,
             "is_excluded": False,
@@ -725,6 +805,8 @@ class MatchingService:
             existing.matched_skills = eval_data["matched_skills"]
             existing.missing_skills = eval_data["missing_skills"]
             existing.transferable_skills = eval_data["transferable_skills"]
+            existing.confidence = eval_data["confidence"]
+            existing.confidence_label = eval_data["confidence_label"]
             existing.explanation = eval_data["explanation"]
             existing.recommendation = eval_data["recommendation"]
             existing.calculated_at = datetime.now(timezone.utc)
@@ -744,6 +826,8 @@ class MatchingService:
                 matched_skills=eval_data["matched_skills"],
                 missing_skills=eval_data["missing_skills"],
                 transferable_skills=eval_data["transferable_skills"],
+                confidence=eval_data["confidence"],
+                confidence_label=eval_data["confidence_label"],
                 explanation=eval_data["explanation"],
                 recommendation=eval_data["recommendation"],
                 calculated_at=datetime.now(timezone.utc),
