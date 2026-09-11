@@ -10,6 +10,12 @@ from app.intelligence.schemas import (
     SkillNormalizationOutput,
     JobEnrichmentOutput,
 )
+from app.schemas.match import (
+    ExperienceStatus,
+    LocationStatus,
+    TransferableMatchItem,
+    WhyThisJobResponse,
+)
 from app.utils.normalization import (
     normalize_skills,
     normalize_skill,
@@ -352,3 +358,195 @@ Return JSON:
                 tech_stack=req_s[:6],
                 remote_policy_reasoning="Derived from job posting details via fallback.",
             )
+
+    async def generate_why_this_job(
+        self,
+        job_id: str,
+        job_title: str,
+        company_name: str,
+        match_breakdown: dict[str, Any],
+        candidate_years: float = 0.0,
+        job_exp_min: float | None = None,
+        job_exp_max: float | None = None,
+        job_location: str = "India",
+        job_remote_type: str | None = None,
+        candidate_preferred_locations: list[str] | None = None,
+        candidate_remote_allowed: bool = True,
+        use_llm: bool = True,
+    ) -> WhyThisJobResponse:
+        """Phase 45: Builds deterministic 'Why This Job?' evidence breakdown with LLM synthesis."""
+        overall_score = float(match_breakdown.get("overall_score", 0.0))
+        recommendation = str(match_breakdown.get("recommendation", "SKIP"))
+        
+        # Determine verdict: APPLY (>=65), CONSIDER (50-64.9), SKIP (<50)
+        if overall_score >= 65.0:
+            verdict = "APPLY"
+        elif overall_score >= 50.0:
+            verdict = "CONSIDER"
+        else:
+            verdict = "SKIP"
+
+        req_info = match_breakdown.get("required_skills") or {}
+        pref_info = match_breakdown.get("preferred_skills") or {}
+        strong_matches = req_info.get("matched", [])
+        missing_critical = req_info.get("missing", [])
+        missing_nice_to_have = pref_info.get("missing", [])
+
+        # Format transferable details
+        raw_trans = match_breakdown.get("transferable_details") or []
+        transferable_matches: list[TransferableMatchItem] = []
+        for t in raw_trans:
+            c_skill = t.get("candidate_skill", "")
+            j_skill = t.get("job_skill", "")
+            credit = float(t.get("credit", 0.5))
+            transferable_matches.append(
+                TransferableMatchItem(
+                    job_skill=j_skill,
+                    candidate_skill=c_skill,
+                    rationale=f"Candidate's {c_skill} maps directly ({int(credit * 100)}% credit) to target {j_skill}",
+                    credit=credit,
+                )
+            )
+
+        # Experience Status
+        exp_eligible = bool(match_breakdown.get("experience_eligible", True))
+        if job_exp_min is not None and job_exp_max is not None:
+            exp_text = f"Required: {job_exp_min}–{job_exp_max} years | Profile: {candidate_years:.1f} years"
+        elif job_exp_min is not None:
+            exp_text = f"Required: {job_exp_min}+ years | Profile: {candidate_years:.1f} years"
+        else:
+            exp_text = f"Required: Unspecified | Profile: {candidate_years:.1f} years"
+        
+        if not exp_eligible:
+            exp_summary = f"Experience mismatch: {exp_text}"
+        else:
+            exp_summary = f"Experience eligible: {exp_text}"
+
+        exp_status = ExperienceStatus(
+            eligible=exp_eligible,
+            candidate_years=candidate_years,
+            required_min=job_exp_min,
+            required_max=job_exp_max,
+            summary=exp_summary,
+        )
+
+        # Location Status
+        loc_eligible = bool(match_breakdown.get("location_eligible", True))
+        remote_str = (job_remote_type or "ONSITE").upper()
+        if remote_str == "REMOTE":
+            loc_summary = "Remote role matches flexible preference"
+        elif loc_eligible:
+            loc_summary = f"Location '{job_location}' matches preferred target cities"
+        else:
+            loc_summary = f"Location '{job_location}' outside preferred locations and not remote"
+
+        loc_status = LocationStatus(
+            eligible=loc_eligible,
+            job_location=job_location,
+            remote_type=job_remote_type,
+            candidate_locations=candidate_preferred_locations or [],
+            remote_allowed=candidate_remote_allowed,
+            summary=loc_summary,
+        )
+
+        # Build Rejection / Warning reasons
+        rejection_reasons: list[str] = []
+        if missing_critical:
+            rejection_reasons.append(f"Missing required skills: {', '.join(missing_critical[:4])}")
+        if not exp_eligible:
+            rejection_reasons.append(exp_summary)
+        if not loc_eligible:
+            rejection_reasons.append(loc_summary)
+
+        # Deterministic Baseline Headline & Recommendation
+        if verdict == "APPLY":
+            headline = f"Strong Match ({overall_score:.0f}%) — Core Requirements Met"
+            recommendation_text = (
+                f"Strong match. Your background in {', '.join(strong_matches[:3]) or 'required stack'} "
+                f"aligns directly with {company_name}. Direct manual application recommended."
+            )
+            talking_points = [
+                f"Highlight proven production experience in {s}." for s in strong_matches[:3]
+            ]
+            if transferable_matches:
+                talking_points.append(
+                    f"Frame adjacent work with {transferable_matches[0].candidate_skill} to fulfill {transferable_matches[0].job_skill}."
+                )
+        elif verdict == "CONSIDER":
+            headline = f"Potential Match ({overall_score:.0f}%) — Bridgeable Skill Gap"
+            recommendation_text = (
+                f"Consider applying. You possess key transferable skills, though {', '.join(missing_critical[:2]) or 'some requirements'} "
+                f"are missing. Emphasize adjacent stack experience."
+            )
+            talking_points = [
+                f"Emphasize strong fundamentals in {', '.join(strong_matches[:2]) or 'your core stack'}."
+            ]
+            if transferable_matches:
+                talking_points.append(
+                    f"Explain how {transferable_matches[0].candidate_skill} experience translates to {transferable_matches[0].job_skill}."
+                )
+        else:
+            headline = f"Low Compatibility ({overall_score:.0f}%) — Key Mismatches"
+            recommendation_text = (
+                f"Skip. Significant gaps in core requirements ({', '.join(missing_critical[:3]) or 'experience/stack'}). "
+                f"Focus on higher-affinity roles."
+            )
+            talking_points = []
+
+        is_llm_generated = False
+        # Optional LLM Enhancement for natural narrative
+        if use_llm:
+            prompt = f"""You are an objective AI career copilot. Explain why the candidate should apply or skip this job.
+Job: {job_title} at {company_name}
+Match Score: {overall_score}% ({recommendation})
+Verdict: {verdict}
+Matched Skills: {', '.join(strong_matches[:6]) if strong_matches else 'None'}
+Missing Critical Skills: {', '.join(missing_critical[:4]) if missing_critical else 'None'}
+Transferable: {', '.join([f"{t.candidate_skill}->{t.job_skill}" for t in transferable_matches]) if transferable_matches else 'None'}
+Experience: {exp_summary}
+Location: {loc_summary}
+
+Respond in valid JSON:
+{{
+  "headline": "Punchy 4-7 word headline",
+  "recommendation_text": "Crisp 2-sentence candid reasoning on applying or skipping",
+  "interview_talking_points": ["point 1", "point 2"]
+}}"""
+            messages = [
+                {"role": "system", "content": "You are a concise, objective AI tech hiring advisor. Return valid JSON only."},
+                {"role": "user", "content": prompt},
+            ]
+            try:
+                llm_res = await self.provider.complete_json(messages)
+                if llm_res.get("headline"):
+                    headline = str(llm_res["headline"]).strip()
+                if llm_res.get("recommendation_text"):
+                    recommendation_text = str(llm_res["recommendation_text"]).strip()
+                if llm_res.get("interview_talking_points") and isinstance(llm_res["interview_talking_points"], list):
+                    talking_points = [str(p) for p in llm_res["interview_talking_points"] if p]
+                is_llm_generated = True
+            except Exception as e:
+                logger.warning("why_this_job_llm_enrichment_failed", job_id=job_id, error=str(e))
+
+        return WhyThisJobResponse(
+            job_id=job_id,
+            job_title=job_title,
+            company_name=company_name,
+            overall_score=overall_score,
+            verdict=verdict,
+            recommendation=recommendation,
+            headline=headline,
+            strong_matches=strong_matches,
+            transferable_matches=transferable_matches,
+            missing_critical=missing_critical,
+            missing_nice_to_have=missing_nice_to_have,
+            experience_status=exp_status,
+            location_status=loc_status,
+            recommendation_text=recommendation_text,
+            rejection_reasons=rejection_reasons,
+            interview_talking_points=talking_points,
+            confidence=float(match_breakdown.get("confidence", 1.0)),
+            confidence_label=str(match_breakdown.get("confidence_label", "HIGH")),
+            is_llm_generated=is_llm_generated,
+        )
+

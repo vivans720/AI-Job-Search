@@ -34,3 +34,50 @@ class MatchBreakdown(BaseModel):
     confidence_label: str = "HIGH"
     explanation: str | None = None
     recommendation: str  # STRONG_MATCH, GOOD_MATCH, CONSIDER, LOW_PRIORITY, SKIP
+
+
+class TransferableMatchItem(BaseModel):
+    job_skill: str
+    candidate_skill: str
+    rationale: str
+    credit: float
+
+
+class ExperienceStatus(BaseModel):
+    eligible: bool
+    candidate_years: float
+    required_min: float | None = None
+    required_max: float | None = None
+    summary: str
+
+
+class LocationStatus(BaseModel):
+    eligible: bool
+    job_location: str
+    remote_type: str | None = None
+    candidate_locations: list[str] = Field(default_factory=list)
+    remote_allowed: bool = True
+    summary: str
+
+
+class WhyThisJobResponse(BaseModel):
+    job_id: str
+    job_title: str
+    company_name: str
+    overall_score: float
+    verdict: str  # APPLY, CONSIDER, SKIP
+    recommendation: str  # STRONG_MATCH, GOOD_MATCH, CONSIDER, LOW_PRIORITY, SKIP
+    headline: str
+    strong_matches: list[str] = Field(default_factory=list)
+    transferable_matches: list[TransferableMatchItem] = Field(default_factory=list)
+    missing_critical: list[str] = Field(default_factory=list)
+    missing_nice_to_have: list[str] = Field(default_factory=list)
+    experience_status: ExperienceStatus
+    location_status: LocationStatus
+    recommendation_text: str
+    rejection_reasons: list[str] = Field(default_factory=list)
+    interview_talking_points: list[str] = Field(default_factory=list)
+    confidence: float = 1.0
+    confidence_label: str = "HIGH"
+    is_llm_generated: bool = False
+

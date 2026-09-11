@@ -19,7 +19,7 @@ from app.schemas.job import (
     JobStatusUpdateRequest,
     SavedJobResponse,
 )
-from app.schemas.match import MatchBreakdown
+from app.schemas.match import MatchBreakdown, WhyThisJobResponse
 from app.services.job_service import (
     batch_save_or_update_job_status,
     get_job_by_id,
@@ -314,6 +314,54 @@ async def calculate_match_endpoint(
         explanation=match_rec.explanation,
         recommendation=match_rec.recommendation,
     )
+
+
+@router.get("/jobs/{job_id}/why", response_model=WhyThisJobResponse)
+async def get_why_this_job_endpoint(
+    job_id: str,
+    use_llm: bool = Query(True, description="Enable LLM rationale synthesis"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Phase 45: 'Why This Job?' Engine — Returns evidence breakdown, verdicts, and talking points."""
+    try:
+        parsed_id = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid job ID format")
+
+    job = (await db.execute(select(Job).where(Job.id == parsed_id))).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    user = await get_or_create_default_user(db)
+    profile = await get_candidate_profile(db, user.id)
+    if not profile:
+        raise HTTPException(status_code=400, detail="Candidate profile not found. Please upload resume first.")
+
+    prefs = await get_or_create_preferences(db, user.id)
+    eval_res = get_matching_service().evaluate_job(job, profile, prefs)
+
+    from app.intelligence.service import AIService
+    ai_service = AIService()
+
+    candidate_years = float(profile.experience_years or 0.0)
+    job_exp_min = float(job.experience_min) if job.experience_min is not None else None
+    job_exp_max = float(job.experience_max) if job.experience_max is not None else None
+
+    return await ai_service.generate_why_this_job(
+        job_id=str(job.id),
+        job_title=job.title,
+        company_name=job.company_name,
+        match_breakdown=eval_res,
+        candidate_years=candidate_years,
+        job_exp_min=job_exp_min,
+        job_exp_max=job_exp_max,
+        job_location=job.location or "India",
+        job_remote_type=job.remote_type,
+        candidate_preferred_locations=profile.preferred_locations,
+        candidate_remote_allowed=getattr(profile, "remote_preference", True),
+        use_llm=use_llm,
+    )
+
 
 
 @router.post("/jobs/rank")
