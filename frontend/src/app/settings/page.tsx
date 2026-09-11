@@ -14,6 +14,7 @@ import {
   Key,
   Globe,
   Sparkles,
+  Wand2,
 } from "lucide-react";
 
 interface Preferences {
@@ -86,6 +87,22 @@ export default function AuditLogsPage() {
     error?: string;
     sample_response?: string;
   } | null>(null);
+
+  // AI Pipeline states (Phase 40)
+  const [pipelineSkillsInput, setPipelineSkillsInput] = useState<string>("React.js, ReactJS, py, fast api, k8s, postgres");
+  const [pipelineSkillsResult, setPipelineSkillsResult] = useState<{
+    mappings?: { raw_token: string; canonical_skill: string }[];
+  } | null>(null);
+  const [testingNormalize, setTestingNormalize] = useState<boolean>(false);
+  const [pipelineJobTitle, setPipelineJobTitle] = useState<string>("Full Stack Python Developer");
+  const [pipelineJobDesc, setPipelineJobDesc] = useState<string>("We need a developer with Python, FastAPI, Docker, and React experience. Nice to have: PostgreSQL and Kubernetes.");
+  const [pipelineJobResult, setPipelineJobResult] = useState<{
+    required_skills?: string[];
+    preferred_skills?: string[];
+    tools_and_technologies?: string[];
+    soft_skills?: string[];
+  } | null>(null);
+  const [testingExtractJob, setTestingExtractJob] = useState<boolean>(false);
 
   const fetchPrefs = async () => {
     try {
@@ -164,6 +181,50 @@ export default function AuditLogsPage() {
       setAiTestResult({ reachable: false, error: msg });
     } finally {
       setTestingAi(false);
+    }
+  };
+
+  const handleTestNormalizeSkills = async () => {
+    setTestingNormalize(true);
+    setPipelineSkillsResult(null);
+    try {
+      const skills = pipelineSkillsInput.split(",").map((s) => s.trim()).filter(Boolean);
+      const res = await fetch("http://localhost:8000/api/v1/ai/pipeline/normalize-skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skills }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPipelineSkillsResult(data);
+      }
+    } catch {
+      // Error
+    } finally {
+      setTestingNormalize(false);
+    }
+  };
+
+  const handleTestExtractJob = async () => {
+    setTestingExtractJob(true);
+    setPipelineJobResult(null);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/ai/pipeline/extract-job-skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: pipelineJobTitle,
+          description: pipelineJobDesc,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPipelineJobResult(data);
+      }
+    } catch {
+      // Error
+    } finally {
+      setTestingExtractJob(false);
     }
   };
 
@@ -505,6 +566,99 @@ export default function AuditLogsPage() {
               onChange={(e) => setCustomApiKey(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-obsidian-950/80 border border-white/[0.08] rounded-xl text-white placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50 disabled:opacity-40"
             />
+          </div>
+        </div>
+      </div>
+
+      {/* Phase 40: AI Pipeline Intelligence Playground Card */}
+      <div className="p-6 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+              <Wand2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Phase 40 — AI Pipeline Playground</h3>
+              <p className="text-[11px] text-zinc-400">
+                Test LLM-driven structured skill normalization and job description extraction in real time.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          {/* Skill Normalization Test */}
+          <div className="p-4 rounded-xl bg-obsidian-950/40 border border-white/[0.06] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-200">Skill Canonicalization</span>
+              <button
+                onClick={handleTestNormalizeSkills}
+                disabled={testingNormalize}
+                className="px-2.5 py-1 text-[11px] bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-lg transition-colors flex items-center gap-1"
+              >
+                {testingNormalize ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                <span>Normalize</span>
+              </button>
+            </div>
+            <input
+              type="text"
+              value={pipelineSkillsInput}
+              onChange={(e) => setPipelineSkillsInput(e.target.value)}
+              placeholder="e.g. React.js, py, k8s, postgres"
+              className="w-full px-3 py-1.5 text-xs bg-obsidian-900 border border-white/[0.08] rounded-lg text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50 font-mono"
+            />
+            {pipelineSkillsResult && (
+              <div className="p-2.5 bg-obsidian-900/80 rounded-lg border border-white/[0.04] text-[11px] font-mono space-y-1">
+                <div className="text-zinc-500 uppercase text-[9px]">Resolved Mappings:</div>
+                {pipelineSkillsResult.mappings?.map((m, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between text-zinc-300">
+                    <span className="text-zinc-400 font-medium">{m.raw_token}</span>
+                    <span className="text-emerald-400 font-semibold">{m.canonical_skill}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Job Description Extraction Test */}
+          <div className="p-4 rounded-xl bg-obsidian-950/40 border border-white/[0.06] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-200">Job Skills Extraction</span>
+              <button
+                onClick={handleTestExtractJob}
+                disabled={testingExtractJob}
+                className="px-2.5 py-1 text-[11px] bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-lg transition-colors flex items-center gap-1"
+              >
+                {testingExtractJob ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                <span>Extract</span>
+              </button>
+            </div>
+            <input
+              type="text"
+              value={pipelineJobTitle}
+              onChange={(e) => setPipelineJobTitle(e.target.value)}
+              placeholder="Job Title"
+              className="w-full px-3 py-1.5 text-xs bg-obsidian-900 border border-white/[0.08] rounded-lg text-zinc-200 focus:outline-none focus:border-purple-500/50"
+            />
+            <textarea
+              rows={2}
+              value={pipelineJobDesc}
+              onChange={(e) => setPipelineJobDesc(e.target.value)}
+              placeholder="Job Description snippet..."
+              className="w-full px-3 py-1.5 text-xs bg-obsidian-900 border border-white/[0.08] rounded-lg text-zinc-200 focus:outline-none focus:border-purple-500/50 resize-none"
+            />
+            {pipelineJobResult && (
+              <div className="p-2.5 bg-obsidian-900/80 rounded-lg border border-white/[0.04] text-[11px] font-mono space-y-1">
+                <div>
+                  <span className="text-purple-400 font-medium">Required: </span>
+                  <span className="text-zinc-300">{pipelineJobResult.required_skills?.join(", ") || "None"}</span>
+                </div>
+                <div>
+                  <span className="text-cyan-400 font-medium">Preferred: </span>
+                  <span className="text-zinc-300">{pipelineJobResult.preferred_skills?.join(", ") || "None"}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

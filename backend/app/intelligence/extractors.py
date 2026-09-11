@@ -1,30 +1,18 @@
 import io
+import uuid
 from typing import Any
 import pdfplumber
 import docx
 import structlog
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.intelligence.llm_provider import LLMProvider, get_llm_provider
-from app.utils.normalization import normalize_skills
+from app.intelligence.service import AIService
+from app.intelligence.schemas import CandidateProfileOutput, JobEnrichmentOutput
+from app.models.job import Job
 
 logger = structlog.get_logger(__name__)
-
-RESUME_EXTRACTION_SYSTEM_PROMPT = """You are an expert technical candidate profiler and resume analyst.
-Analyze the provided resume text and extract a comprehensive, structured candidate profile in JSON.
-
-Guidelines:
-1. Do NOT hallucinate or invent information not present in the resume.
-2. For fresh graduates / current students with only internships or academic projects, classify experience_level as "FRESHER" and experience_years as 0.
-3. Determine target_roles strictly supported by the candidate's demonstrable skills and projects. Prioritize roles like:
-   - Full Stack Developer / Engineer
-   - Backend Developer / Engineer
-   - Frontend Developer / Engineer
-   - Software Engineer / Developer
-   - AI / ML Engineer
-   - Generative AI Engineer
-4. Categorize technologies cleanly into programming_languages, frameworks, databases, cloud, and tools.
-5. Return ONLY a valid JSON object matching the requested schema.
-"""
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -55,7 +43,6 @@ def extract_text_from_bytes(file_bytes: bytes, filename: str) -> str:
     elif lower_name.endswith((".txt", ".md")):
         return file_bytes.decode("utf-8", errors="replace")
     else:
-        # Attempt PDF first, then UTF-8 decode
         try:
             return extract_text_from_pdf(file_bytes)
         except Exception:
@@ -65,84 +52,46 @@ def extract_text_from_bytes(file_bytes: bytes, filename: str) -> str:
 async def extract_candidate_profile_from_text(
     resume_text: str, llm: LLMProvider | None = None
 ) -> dict[str, Any]:
-    """Uses the LLM provider to extract structured candidate intelligence from raw resume text."""
-    if not llm:
-        llm = get_llm_provider()
+    """Phase 40: Structured candidate intelligence extraction via AIService returning dictionary representation."""
+    service = AIService(provider=llm)
+    profile: CandidateProfileOutput = await service.extract_candidate_profile(resume_text)
+    return profile.model_dump()
 
-    prompt = f"""Extract the structured candidate profile from this resume:
 
---- RESUME TEXT ---
-{resume_text}
---- END OF RESUME ---
+async def enrich_job_record_llm(
+    job_id: uuid.UUID,
+    db: AsyncSession,
+    service: AIService | None = None,
+) -> JobEnrichmentOutput | None:
+    """Phase 40: Enriches an existing stored job record with LLM intelligence and updates DB."""
+    stmt = select(Job).where(Job.id == job_id)
+    result = await db.execute(stmt)
+    job = result.scalar_one_or_none()
+    if not job:
+        return None
 
-Return JSON with exactly these keys:
-{{
-  "candidate_name": "Full Name",
-  "email": "email@example.com or null",
-  "experience_level": "FRESHER" or "0-1" or "1-2" or "ENTRY_LEVEL",
-  "experience_years": 0,
-  "target_roles": ["Full Stack Developer", "Backend Developer", "AI Engineer"],
-  "programming_languages": ["Python", "JavaScript"],
-  "frameworks": ["FastAPI", "React", "Node.js"],
-  "databases": ["PostgreSQL", "MongoDB"],
-  "cloud": ["AWS", "Docker"],
-  "tools": ["Git", "Postman"],
-  "skills": ["REST APIs", "Vector Search", "System Design"],
-  "education": [
-    {{
-      "degree": "B.Tech in Computer Science",
-      "institution": "University Name",
-      "graduation_year": 2026,
-      "grade": "8.5 CGPA or null"
-    }}
-  ],
-  "projects": [
-    {{
-      "title": "Project Name",
-      "description": "Brief description of what was built and impact",
-      "technologies": ["Python", "FastAPI"],
-      "link": "https://github.com/... or null"
-    }}
-  ],
-  "work_experience": [
-    {{
-      "title": "Intern / Developer",
-      "company": "Company Name",
-      "duration": "June 2024 - August 2024",
-      "description": "Responsibilities and achievements",
-      "type": "INTERNSHIP" or "FULL_TIME"
-    }}
-  ],
-  "certifications": ["Certification Name"],
-  "preferred_locations": ["Bengaluru", "Remote"],
-  "summary": "Concise 2-sentence technical summary"
-}}
-"""
+    ai_svc = service or AIService()
+    enrichment = await ai_svc.enrich_job(job.title, job.description, job.raw_data)
 
-    messages = [
-        {"role": "system", "content": RESUME_EXTRACTION_SYSTEM_PROMPT},
-        {"role": "user", "content": prompt},
-    ]
+    # Persist enrichment back onto Job model
+    if enrichment.required_skills:
+        job.required_skills = enrichment.required_skills
+    if enrichment.preferred_skills:
+        job.preferred_skills = enrichment.preferred_skills
+    if enrichment.standardized_title and not job.normalized_title:
+        job.normalized_title = enrichment.standardized_title
+    if enrichment.role_category:
+        job.role_category = enrichment.role_category
+    if enrichment.min_experience_years is not None and job.experience_min is None:
+        job.experience_min = enrichment.min_experience_years
+    if enrichment.max_experience_years is not None and job.experience_max is None:
+        job.experience_max = enrichment.max_experience_years
 
-    raw_profile = await llm.complete_json(messages)
+    # Store full AI enrichment under raw_data['ai_enrichment']
+    raw = dict(job.raw_data or {})
+    raw["ai_enrichment"] = enrichment.model_dump()
+    job.raw_data = raw
 
-    # Normalize extracted skill collections
-    raw_profile["programming_languages"] = normalize_skills(
-        raw_profile.get("programming_languages", [])
-    )
-    raw_profile["frameworks"] = normalize_skills(raw_profile.get("frameworks", []))
-    raw_profile["databases"] = normalize_skills(raw_profile.get("databases", []))
-    raw_profile["cloud"] = normalize_skills(raw_profile.get("cloud", []))
-    raw_profile["tools"] = normalize_skills(raw_profile.get("tools", []))
-
-    all_combined = (
-        raw_profile["programming_languages"]
-        + raw_profile["frameworks"]
-        + raw_profile["databases"]
-        + raw_profile["cloud"]
-        + raw_profile["tools"]
-        + normalize_skills(raw_profile.get("skills", []))
-    )
-    raw_profile["skills"] = normalize_skills(all_combined)
-
-    return raw_profile
+    await db.commit()
+    await db.refresh(job)
+    return enrichment

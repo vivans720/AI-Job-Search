@@ -1,15 +1,24 @@
+import uuid
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.intelligence.llm_provider import create_ai_provider, get_llm_provider
+from app.intelligence.service import AIService
+from app.intelligence.extractors import enrich_job_record_llm
+from app.intelligence.schemas import (
+    CandidateProfileOutput,
+    JobSkillsOutput,
+    SkillNormalizationOutput,
+    JobEnrichmentOutput,
+)
 from app.services.preference_service import get_or_create_preferences
 from app.services.user_service import get_or_create_default_user
 
-router = APIRouter(prefix="/ai", tags=["AI Provider"])
+router = APIRouter(prefix="/ai", tags=["AI Provider & Pipeline"])
 
 
 class AIConnectionTestRequest(BaseModel):
@@ -25,6 +34,20 @@ class AIProviderInfo(BaseModel):
     type: str  # "local" | "cloud"
     default_model: str
     configured: bool
+    description: str
+
+
+class JobSkillsExtractRequest(BaseModel):
+    title: str
+    description: str
+
+
+class NormalizeSkillsRequest(BaseModel):
+    skills: list[str]
+
+
+class EnrichJobRequest(BaseModel):
+    title: str
     description: str
 
 
@@ -98,7 +121,6 @@ async def test_ai_connection(
     user = await get_or_create_default_user(db)
     pref = await get_or_create_preferences(db, user.id)
 
-    # Use existing saved key if testing the currently configured provider and none passed
     api_key = req.api_key
     if not api_key and pref.ai_provider == req.provider:
         api_key = pref.ai_api_key
@@ -120,3 +142,37 @@ async def test_ai_connection(
             "latency_ms": 0,
             "error": str(e),
         }
+
+
+# =====================================================================
+# Phase 40 — AI Pipeline Endpoints
+# =====================================================================
+
+@router.post("/pipeline/extract-job-skills", response_model=JobSkillsOutput)
+async def extract_job_skills_endpoint(req: JobSkillsExtractRequest):
+    """Phase 40: Extracts required vs preferred skills and tech stack from job posting."""
+    service = AIService()
+    return await service.extract_job_skills(req.title, req.description)
+
+
+@router.post("/pipeline/normalize-skills", response_model=SkillNormalizationOutput)
+async def normalize_skills_endpoint(req: NormalizeSkillsRequest):
+    """Phase 40: Standardizes ambiguous/variant skills into canonical industry names."""
+    service = AIService()
+    return await service.normalize_skills_llm(req.skills)
+
+
+@router.post("/pipeline/enrich-job", response_model=JobEnrichmentOutput)
+async def enrich_job_endpoint(req: EnrichJobRequest):
+    """Phase 40: Deep intelligence enrichment on job title and description."""
+    service = AIService()
+    return await service.enrich_job(req.title, req.description)
+
+
+@router.post("/pipeline/enrich-job-record/{job_id}", response_model=JobEnrichmentOutput)
+async def enrich_stored_job_record(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Phase 40: Runs AI enrichment for an existing stored Job and updates database."""
+    enriched = await enrich_job_record_llm(job_id=job_id, db=db)
+    if not enriched:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return enriched
