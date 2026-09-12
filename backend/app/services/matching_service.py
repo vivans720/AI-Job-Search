@@ -573,7 +573,7 @@ class MatchingService:
         # 4. Hard location exclusion check
         is_loc_excluded = False
         if strict_location and profile and profile.preferred_locations:
-            pref_locs_l = [l.strip().lower() for l in profile.preferred_locations if l.strip()]
+            pref_locs_l = [loc_item.strip().lower() for loc_item in profile.preferred_locations if loc_item.strip()]
             if pref_locs_l:
                 job_remote = (job.remote_type or "").upper() == "REMOTE"
                 can_remote = getattr(profile, "remote_preference", True)

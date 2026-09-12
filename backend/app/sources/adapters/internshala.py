@@ -550,6 +550,7 @@ class InternshalaAdapter(JobSource):
         max_jobs_quota = max(limit, 100)
         max_internships_quota = max(limit, 100)
         jobs_count = 0
+        internships_count = 0
         start_time = asyncio.get_event_loop().time()
         try:
             for path in paths:

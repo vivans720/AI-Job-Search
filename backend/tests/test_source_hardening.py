@@ -41,10 +41,10 @@ def test_classify_error_parse_failure():
 
 @pytest.mark.asyncio
 async def test_rate_limiter_local():
-    limiter = SourceRateLimiter("test_source", rate=50, per=1.0)
+    limiter = SourceRateLimiter("test_source_local_isolated", rate=50, per=1.0)
     t0 = asyncio.get_event_loop().time()
-    await limiter.acquire()
-    await limiter.acquire()
+    await limiter._acquire_local()
+    await limiter._acquire_local()
     t1 = asyncio.get_event_loop().time()
     assert (t1 - t0) >= 0.015  # min_interval 1/50 = 0.02s
 

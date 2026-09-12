@@ -38,7 +38,7 @@ class EvaluationRunner:
             p = self.fixtures_dir / sub
             if not p.exists():
                 continue
-            for f in p.glob("*.json"):
+            for f in sorted(p.glob("*.json")):
                 try:
                     with open(f, "r", encoding="utf-8") as file:
                         data = json.load(file)

@@ -128,10 +128,10 @@ def extract_naukri_job_id(url_or_id: str | None) -> str:
 class NaukriAdapter(JobSource):
     source_name: str = "naukri"
 
-    def __init__(self, settings: Any = None, timeout: float = 10.0, max_retries: int = 2):
+    def __init__(self, app_settings: Any = None, timeout: float = 10.0, max_retries: int = 2):
         super().__init__()
         from app.config import settings as default_settings
-        self.settings = settings or default_settings
+        self.settings = app_settings or default_settings
         self.timeout = timeout
         self.max_retries = max_retries
         self.freshness_service = get_freshness_service()

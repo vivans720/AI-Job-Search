@@ -102,7 +102,7 @@ class SampleJobAdapter(JobSource):
 
             # Filter locations
             if locs_lower:
-                loc_match = any(l in loc.lower() for l in locs_lower)
+                loc_match = any(loc_q in loc.lower() for loc_q in locs_lower)
                 if not loc_match and not (query.include_remote and remote == "REMOTE"):
                     continue
 

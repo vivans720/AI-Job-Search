@@ -19,4 +19,9 @@ ignore = [
     "W292",  # no newline at end of file
     "W293",  # blank line contains whitespace
     "F541",  # f-string without placeholders
+    "F811",  # redefinition of unused name
+    "E741",  # ambiguous variable name
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"app/models/*" = ["F821"]
