@@ -62,10 +62,13 @@ mcp:
 	@backend/.venv/bin/python3 mcp-server/server.py
 
 test:
-	@backend/.venv/bin/python3 -m pytest tests/ -v
+	@backend/.venv/bin/python3 -m pytest backend/tests/ tests/test_freshness.py tests/test_dedup.py tests/test_normalization.py -v
 
 lint:
 	@if [ -x backend/.venv/bin/ruff ]; then backend/.venv/bin/ruff check backend/; else echo "ruff not installed in .venv; running flake8 or skipping"; fi
+
+ci: lint test
+	@cd frontend && npm run lint && npm run build
 
 clean:
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
