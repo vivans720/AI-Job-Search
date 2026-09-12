@@ -164,7 +164,7 @@ Guidelines:
             for key in ("programming_languages", "frameworks", "databases", "cloud", "tools"):
                 if key in data and isinstance(data[key], list):
                     data[key] = normalize_skills(data[key])
-            
+
             combined = []
             for key in ("programming_languages", "frameworks", "databases", "cloud", "tools", "skills"):
                 if key in data and isinstance(data[key], list):
@@ -377,7 +377,7 @@ Return JSON:
         """Phase 45: Builds deterministic 'Why This Job?' evidence breakdown with LLM synthesis."""
         overall_score = float(match_breakdown.get("overall_score", 0.0))
         recommendation = str(match_breakdown.get("recommendation", "SKIP"))
-        
+
         # Determine verdict: APPLY (>=65), CONSIDER (50-64.9), SKIP (<50)
         if overall_score >= 65.0:
             verdict = "APPLY"
@@ -416,7 +416,7 @@ Return JSON:
             exp_text = f"Required: {job_exp_min}+ years | Profile: {candidate_years:.1f} years"
         else:
             exp_text = f"Required: Unspecified | Profile: {candidate_years:.1f} years"
-        
+
         if not exp_eligible:
             exp_summary = f"Experience mismatch: {exp_text}"
         else:

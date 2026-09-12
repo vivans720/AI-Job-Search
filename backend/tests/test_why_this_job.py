@@ -6,7 +6,7 @@ from app.schemas.match import WhyThisJobResponse
 @pytest.mark.asyncio
 async def test_generate_why_this_job_strong_match_apply():
     service = AIService()
-    
+
     match_breakdown = {
         "overall_score": 87.5,
         "recommendation": "STRONG_MATCH",
@@ -26,7 +26,7 @@ async def test_generate_why_this_job_strong_match_apply():
         "confidence": 0.95,
         "confidence_label": "HIGH",
     }
-    
+
     res: WhyThisJobResponse = await service.generate_why_this_job(
         job_id="test-job-123",
         job_title="Backend Engineer",
@@ -56,7 +56,7 @@ async def test_generate_why_this_job_strong_match_apply():
 @pytest.mark.asyncio
 async def test_generate_why_this_job_mismatch_skip():
     service = AIService()
-    
+
     match_breakdown = {
         "overall_score": 38.0,
         "recommendation": "SKIP",
@@ -74,7 +74,7 @@ async def test_generate_why_this_job_mismatch_skip():
         "confidence": 0.9,
         "confidence_label": "HIGH",
     }
-    
+
     res: WhyThisJobResponse = await service.generate_why_this_job(
         job_id="test-job-456",
         job_title="Senior Java Architect",
@@ -103,7 +103,7 @@ async def test_generate_why_this_job_mismatch_skip():
 @pytest.mark.asyncio
 async def test_generate_why_this_job_consider_bridgeable():
     service = AIService()
-    
+
     match_breakdown = {
         "overall_score": 58.0,
         "recommendation": "CONSIDER",
@@ -123,7 +123,7 @@ async def test_generate_why_this_job_consider_bridgeable():
         "confidence": 0.85,
         "confidence_label": "HIGH",
     }
-    
+
     res: WhyThisJobResponse = await service.generate_why_this_job(
         job_id="test-job-789",
         job_title="Junior Backend Developer",

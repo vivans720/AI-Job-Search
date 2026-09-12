@@ -15,4 +15,8 @@ ignore = [
     "E402",  # module level import not at top
     "F401",  # unused import
     "F841",  # unused variable
+    "W291",  # trailing whitespace
+    "W292",  # no newline at end of file
+    "W293",  # blank line contains whitespace
+    "F541",  # f-string without placeholders
 ]

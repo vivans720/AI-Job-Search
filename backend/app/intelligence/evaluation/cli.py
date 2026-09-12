@@ -20,9 +20,9 @@ async def main():
     parser.add_argument("--out", type=str, default=None, help="Path to save evaluation report JSON")
     args = parser.parse_args()
 
-    print(f"\n=======================================================")
-    print(f"       AI EVALUATION FRAMEWORK - BENCHMARK RUNNER      ")
-    print(f"=======================================================")
+    print("\n=======================================================")
+    print("       AI EVALUATION FRAMEWORK - BENCHMARK RUNNER      ")
+    print("=======================================================")
     print(f"Category: {args.category}")
 
     runner = EvaluationRunner()
