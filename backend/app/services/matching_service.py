@@ -431,11 +431,10 @@ class MatchingService:
         priority_companies: list[str] | None,
         excluded_companies: list[str] | None,
     ) -> tuple[float, bool]:
-        """Returns (pref_score, is_excluded_company)."""
-        comp_lower = company_name.strip().lower()
+        comp_lower = (company_name or "").strip().lower()
 
         # Excluded company check
-        if any(exc.strip().lower() == comp_lower for exc in (excluded_companies or []) if exc and exc.strip()):
+        if comp_lower and any(exc.strip().lower() == comp_lower for exc in (excluded_companies or []) if exc and exc.strip()):
             return 0.0, True
 
         score = 80.0  # Base neutral
@@ -781,7 +780,8 @@ class MatchingService:
             },
             "explanation": explanation,
             "recommendation": recommendation,
-            "is_excluded": False,
+            "is_excluded": bool(exclusion_reasons),
+            "exclusion_reasons": exclusion_reasons,
         }
 
     async def get_or_calculate_match(

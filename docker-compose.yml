@@ -1,7 +1,7 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: jobagent_postgres
+    container_name: jobagent_postgres_dev
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-jobagent}

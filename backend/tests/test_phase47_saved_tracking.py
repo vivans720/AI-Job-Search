@@ -21,6 +21,7 @@ async def test_save_or_update_job_status_saved():
     )
 
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
 
     # When querying for Job
     mock_res_job = MagicMock()

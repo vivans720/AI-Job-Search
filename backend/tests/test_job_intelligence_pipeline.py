@@ -75,6 +75,7 @@ async def test_job_intelligence_pipeline_e2e():
             return None
 
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
     mock_db.begin_nested = MagicMock(return_value=AsyncContextManagerMock())
 
     # Mock DB executions

@@ -568,11 +568,6 @@ class NaukriAdapter(JobSource):
         seen_job_ids: set[str] = set()
 
         max_pages = 3
-        for term in queries:
-            slug = quote_plus(term.lower())
-            # For early-career searches (experience_max <= 2), avoid forcing &experience=0
-            # which blinds Naukri search to only postings explicitly tagged "Fresher"
-            if query.experience_max is not None and query.experience_max > 2:
         # For early-career searches (experience_max <= 2), avoid forcing &experience=0
         # which blinds Naukri search to only postings explicitly tagged "Fresher"
         if query.experience_max is not None and query.experience_max > 2:
