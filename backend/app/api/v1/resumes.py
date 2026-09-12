@@ -19,22 +19,26 @@ async def upload_resume(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload and parse a resume file (PDF or DOCX)."""
+    """Upload and parse a resume file (PDF or DOCX) with security validation."""
+    from app.core.security import validate_resume_upload
+
     user = await get_or_create_default_user(db)
     file_bytes = await file.read()
+    raw_filename = file.filename or "resume.pdf"
 
-    if not file_bytes:
-        raise HTTPException(status_code=400, detail="Empty file uploaded")
+    # Security validation (file size, mime/extension, magic bytes, safe naming)
+    ext, secure_disk_name = validate_resume_upload(raw_filename, file_bytes)
 
-    filename = file.filename or "resume.pdf"
     try:
         resume, _ = await process_and_save_resume(
             db=db,
             user_id=user.id,
             file_bytes=file_bytes,
-            filename=filename,
+            filename=raw_filename,
         )
         return resume
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process resume: {str(e)}")
 

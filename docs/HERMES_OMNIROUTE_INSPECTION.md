@@ -9,7 +9,7 @@
 ## OmniRoute Configuration
 - **Process**: `omniroute (v16.3.1)` active on port `20128`
 - **Base URL**: `http://localhost:20128/v1`
-- **Auth Key**: Read from `~/.omniroute/.env` / `~/.hermes/.env` (`sk-a11ca63471730069-0c1fcf-21a63b5e`)
+- **Auth Key**: Read from `~/.omniroute/.env` / `~/.hermes/.env` (masked `sk-placeholder-omniroute-key`)
 - **Protocol**: OpenAI-compatible REST API (`/v1/chat/completions`, `/v1/models`)
 - **Models Available**: Catalog across providers (OpenAI, Anthropic, Gemini, Groq, SiliconFlow, Qwen, DeepSeek, etc.)
 

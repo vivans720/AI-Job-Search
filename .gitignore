@@ -80,6 +80,14 @@ backend/data/*
 # ── Private Candidate / User Data ──
 data/private/*
 !data/private/.gitkeep
+backend/data/resumes/*
+!backend/data/resumes/.gitkeep
+storage/resumes/*
+!storage/resumes/.gitkeep
+uploads/
+*.pdf
+*.docx
+*.doc
 
 # ── OS & IDE Artifacts ──
 .DS_Store
