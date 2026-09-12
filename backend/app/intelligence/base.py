@@ -9,6 +9,8 @@ logger = structlog.get_logger(__name__)
 
 def clean_and_extract_json(text: str) -> dict[str, Any]:
     """Helper to reliably extract a JSON object from text with markdown fences or surrounding noise."""
+    if not text or not isinstance(text, str):
+        return {}
     cleaned = text.strip()
     if cleaned.startswith("```json"):
         cleaned = cleaned[7:]
@@ -21,8 +23,18 @@ def clean_and_extract_json(text: str) -> dict[str, Any]:
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start != -1 and end != -1 and end > start:
-        return json.loads(cleaned[start : end + 1])
-    return json.loads(cleaned)
+        candidate = cleaned[start : end + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    try:
+        return json.loads(cleaned)
+    except Exception as e:
+        logger.warning("json_extraction_failed", preview=text[:100], error=str(e))
+        return {}
+
 
 
 class BaseAIProvider(ABC):

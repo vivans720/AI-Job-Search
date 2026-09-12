@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
+from app.core.resilience import get_circuit_breaker, CircuitBreakerOpenError
 from app.core.logging import metrics
 from app.database import async_session_factory
 from app.intelligence.embedding_provider import get_embedding_provider
@@ -27,10 +28,13 @@ from app.utils.validation import validate_normalized_job
 
 logger = structlog.get_logger(__name__)
 
+# Dead-letter quarantine queue for corrupted or unparseable job entities in-memory
+DEAD_LETTER_QUARANTINE: list[dict[str, Any]] = []
+
 
 class JobIngestionService:
     """
-    Coordinates end-to-end Phase 43/51 Job Intelligence Pipeline:
+    Coordinates end-to-end Phase 43/51/52 Job Intelligence Pipeline:
     Discovery -> Normalization -> 24h Freshness Filter -> Fast L1-L4 Dedup ->
     AI/Hybrid Skill Normalization & Extraction -> 384d Vector Embedding ->
     Level 5 Semantic Dedup -> Database Persistence with Savepoints -> Candidate Match Evaluation
@@ -53,7 +57,29 @@ class JobIngestionService:
         logger.info("sync_started", source=source.source_name)
 
         q = query or JobSearchQuery()
-        raw_jobs = await source.search(q)
+        breaker = get_circuit_breaker(f"source:{source.source_name}", failure_threshold=3, recovery_timeout_sec=30.0)
+
+        try:
+            raw_jobs = await breaker.call(source.search, q)
+        except CircuitBreakerOpenError as cbe:
+            logger.error("source_circuit_breaker_open_skipping", source=source.source_name, error=str(cbe))
+            return {
+                "source": source.source_name,
+                "status": "degraded_circuit_open",
+                "error": str(cbe),
+                "total_discovered": 0,
+                "saved_canonical": 0,
+            }
+        except Exception as src_err:
+            logger.error("source_search_failed_marked_failure", source=source.source_name, error=str(src_err))
+            return {
+                "source": source.source_name,
+                "status": "failed",
+                "error": str(src_err),
+                "total_discovered": 0,
+                "saved_canonical": 0,
+            }
+
         total_discovered = len(raw_jobs)
         
         # Metric and log: discovery
@@ -302,11 +328,19 @@ class JobIngestionService:
                         persisted_job_entities.append(new_job)
             except Exception as single_err:
                 logger.warning(
-                    "job_persistence_savepoint_failed",
+                    "job_persistence_savepoint_failed_quarantined",
                     source=source.source_name,
                     title=norm_job.title,
                     error=str(single_err),
                 )
+                DEAD_LETTER_QUARANTINE.append({
+                    "source": source.source_name,
+                    "title": norm_job.title,
+                    "job_hash": getattr(norm_job, "job_hash", None),
+                    "source_url": getattr(norm_job, "source_url", None),
+                    "error": str(single_err),
+                    "quarantined_at": datetime.now(timezone.utc).isoformat(),
+                })
                 continue
 
         await db.commit()
