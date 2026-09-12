@@ -1,3 +1,4 @@
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -5,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
+from app.core.logging import metrics
 from app.database import async_session_factory
 from app.intelligence.embedding_provider import get_embedding_provider
 from app.intelligence.service import AIService
@@ -28,7 +30,7 @@ logger = structlog.get_logger(__name__)
 
 class JobIngestionService:
     """
-    Coordinates end-to-end Phase 43 Job Intelligence Pipeline:
+    Coordinates end-to-end Phase 43/51 Job Intelligence Pipeline:
     Discovery -> Normalization -> 24h Freshness Filter -> Fast L1-L4 Dedup ->
     AI/Hybrid Skill Normalization & Extraction -> 384d Vector Embedding ->
     Level 5 Semantic Dedup -> Database Persistence with Savepoints -> Candidate Match Evaluation
@@ -47,11 +49,17 @@ class JobIngestionService:
         source: JobSource,
         query: JobSearchQuery | None = None,
     ) -> dict[str, Any]:
+        t0 = time.perf_counter()
+        logger.info("sync_started", source=source.source_name)
+
         q = query or JobSearchQuery()
         raw_jobs = await source.search(q)
         total_discovered = len(raw_jobs)
+        
+        # Metric and log: discovery
+        metrics.inc("jobs_discovered_total", total_discovered, source=source.source_name)
         logger.info(
-            "ingestion_discovered_raw",
+            "job_discovered",
             source=source.source_name,
             count=total_discovered,
         )
@@ -119,7 +127,6 @@ class JobIngestionService:
         )
 
         # 3. Recall-First Architecture: All fresh jobs are preserved
-        # Experience and seniority are preserved as metadata for frontend filtering and AI ranking
         surviving_jobs: list[NormalizedJob] = list(fresh_jobs)
         filtered_by_experience = 0
 
@@ -199,6 +206,9 @@ class JobIngestionService:
             audit_log = cheap_audit_log
 
         deduplicated_count = len(audit_log)
+        if deduplicated_count > 0:
+            metrics.inc("jobs_deduplicated_total", deduplicated_count, source=source.source_name)
+            logger.info("job_deduplicated", source=source.source_name, count=deduplicated_count)
 
         # 8. Database Persistence with Savepoints (begin_nested)
         saved_count = 0
@@ -300,9 +310,17 @@ class JobIngestionService:
                 continue
 
         await db.commit()
+        
+        # Record persisted jobs metric & log
+        metrics.inc("jobs_accepted_total", saved_count, source=source.source_name)
+        logger.info(
+            "job_persisted",
+            source=source.source_name,
+            saved=saved_count,
+            updated=updated_count,
+        )
 
         # 9. Phase 43: Candidate Matching Stage
-        # For default active user/profile, precalculate matches for saved jobs
         matches_evaluated_count = 0
         try:
             user_stmt = select(User).limit(1)
@@ -331,6 +349,10 @@ class JobIngestionService:
                             logger.debug("job_matching_evaluation_skipped", job_id=str(p_job.id), error=str(m_err))
         except Exception as match_stage_err:
             logger.warning("matching_stage_post_ingest_failed", error=str(match_stage_err))
+
+        duration_sec = time.perf_counter() - t0
+        metrics.observe("sync_duration_seconds", duration_sec, source=source.source_name)
+        logger.info("sync_completed", source=source.source_name, duration_sec=round(duration_sec, 2))
 
         saved_jobs_count = sum(1 for j in canonical_jobs if j.employment_type != "INTERNSHIP")
         saved_internships_count = sum(1 for j in canonical_jobs if j.employment_type == "INTERNSHIP")
