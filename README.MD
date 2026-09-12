@@ -238,9 +238,12 @@ Test connection:
  
 Run backend unit and integration test suite:
 ```bash
-# Full test suite (189 tests across 25 suites)
-backend/.venv/bin/pytest tests/ -v
-# or: make test
+# Backend unit & integration test suite (86 tests)
+make test
+# or: backend/.venv/bin/pytest backend/tests/ tests/test_freshness.py tests/test_dedup.py tests/test_normalization.py -v
+
+# Full suite including live DB integration tests (requires docker compose up -d postgres redis)
+backend/.venv/bin/pytest tests/ backend/tests/ -v
 ```
 
 Frontend production build check:
