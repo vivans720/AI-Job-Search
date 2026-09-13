@@ -8,34 +8,7 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function checkSetup() {
-      try {
-        const res = await fetch("http://localhost:8000/api/v1/preferences/setup-status");
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted) {
-            if (data.setup_completed) {
-              router.replace("/dashboard");
-            } else {
-              router.replace("/setup");
-            }
-            return;
-          }
-        } else {
-          if (isMounted) router.replace("/setup");
-        }
-      } catch {
-        if (isMounted) router.replace("/setup");
-      }
-    }
-
-    checkSetup();
-
-    return () => {
-      isMounted = false;
-    };
+    router.replace("/jobs");
   }, [router]);
 
   return (

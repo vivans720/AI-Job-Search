@@ -1,10 +1,8 @@
 import json
-import re
 from pathlib import Path
 from typing import Any
 import structlog
 
-from app.config import settings
 from app.services.freshness_service import get_freshness_service
 from app.sources.base import JobSearchQuery, JobSource, NormalizedJob, RawJob
 from app.utils.normalization import (
@@ -16,15 +14,6 @@ from app.utils.normalization import (
 )
 
 logger = structlog.get_logger(__name__)
-
-
-def parse_experience_range(raw_exp: str | None) -> tuple[int, int]:
-    if not raw_exp:
-        return 0, 0
-    min_y, max_y, _, _ = parse_experience_requirement(raw_exp)
-    if min_y is None and max_y is None:
-        return 0, 0
-    return min_y or 0, max_y if max_y is not None else (min_y or 0)
 
 
 def calculate_quality_score(

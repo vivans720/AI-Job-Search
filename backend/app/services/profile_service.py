@@ -89,10 +89,27 @@ async def apply_resume_to_profile(
     ]
 
     for field in fields_to_sync:
-        if field not in overrides and field in extracted_data:
+        if field in extracted_data:
             val = extracted_data[field]
             if val is not None:
-                setattr(profile, field, val)
+                if field == "skills":
+                    # On resume upload, merge newly extracted skills with any existing skills
+                    existing_skills = profile.skills or []
+                    extracted_skills = val if isinstance(val, list) else []
+                    merged_skills = list(dict.fromkeys(extracted_skills + existing_skills))
+                    setattr(profile, "skills", merged_skills)
+                    # Clear the override flag so the user sees the fresh resume skills
+                    if "skills" in overrides:
+                        overrides.pop("skills", None)
+                elif field not in overrides:
+                    if field == "experience_years":
+                        try:
+                            val = int(round(float(val)))
+                        except (ValueError, TypeError):
+                            val = 0
+                    setattr(profile, field, val)
+
+    profile.manual_overrides = overrides
 
     # Always enforce excluded roles
     if profile.excluded_roles and profile.target_roles:

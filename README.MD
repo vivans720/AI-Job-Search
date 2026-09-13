@@ -230,7 +230,20 @@ Test connection:
 - `POST /api/v1/jobs/sync?source=all` — On-demand live multi-source ingestion across all enabled boards (Internshala, Naukri, LinkedIn).
 - `POST /api/v1/jobs/sync?source=internshala|naukri|linkedin` — On-demand live ingestion for a specific job board or multi-source engine.
 - `GET /PUT /api/v1/profile` — Candidate profile retrieval and manual override management.
-- `GET /PUT /api/v1/preferences` — Search criteria, match threshold, and priority/exclusion lists.
+- `GET /PUT /api/v1/preferences` — Search criteria, match threshold, discrete freshness, experience tiers, locations, role types, source boards, priority/exclusion lists, and AI gateway settings.
+- `GET /api/v1/ai/providers` — List all 11 supported AI providers with capability metadata and configuration status.
+- `POST /api/v1/ai/test` — Live connectivity and model diagnostic ping with round-trip latency.
+
+---
+
+## User Preferences & Filter Quick-Apply
+
+- **Dedicated Preferences Management (`/preferences`)**:
+  - Full configuration across 7 search dimensions: Freshness (1, 4, 8, 12, 16, 24h), Experience level (`FRESHER`, `0_1`, `1_2`, `2_3`, `3_PLUS`, `ALL`), Match threshold slider (0–100%), Preferred locations (tag input & quick presets), Role type (`ALL`, `JOBS`, `INTERNSHIPS`), Source boards (`LINKEDIN`, `NAUKRI`, `INTERNSHALA`, `INDEED`), and Excluded companies list.
+  - Dual-layer persistence: Instant client-side `localStorage` (`job_search_ai_preferences_v1`) paired with transactional PostgreSQL backend synchronization.
+- **Filter Quick-Apply ("My Preferences" Button)**:
+  - Accessible directly on the Job Discovery Radar (`/jobs`) filter toolbar.
+  - Single-click population and triggering of active search filters matching stored user preferences, including discrete freshness sync, role filter, experience level, location pills, minimum score threshold, and excluded companies.
 
 ---
 
@@ -238,7 +251,7 @@ Test connection:
  
 Run backend unit and integration test suite:
 ```bash
-# Backend unit & integration test suite (86 tests)
+# Backend unit & integration test suite (93+ tests)
 make test
 # or: backend/.venv/bin/pytest backend/tests/ tests/test_freshness.py tests/test_dedup.py tests/test_normalization.py -v
 

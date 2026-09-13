@@ -240,6 +240,13 @@ async def get_job_facets_endpoint(
     )
 
 
+@router.get("/jobs/locations/taxonomy")
+async def get_location_taxonomy_endpoint() -> dict[str, Any]:
+    """Returns canonical Indian locations hierarchy, top tech hubs, states, and union territories."""
+    from app.core.location_taxonomy import get_taxonomy_tree
+    return get_taxonomy_tree()
+
+
 @router.get("/jobs/saved", response_model=list[SavedJobResponse])
 async def list_saved_jobs_endpoint(
     status: str | None = Query(None, description="Optional status filter"),
@@ -929,7 +936,7 @@ async def trigger_pipeline_enrichment_endpoint(
 
             # 2. Embedding
             text = f"{job.normalized_title or job.title} at {job.company_name}. {job.description} Skills: {', '.join(job.required_skills or [])}"
-            emb = emb_provider.embed_text(text)
+            emb = emb_provider.embed(text)
             if emb:
                 job.embedding = emb
                 embedded_count += 1

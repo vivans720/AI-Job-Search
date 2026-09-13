@@ -408,16 +408,32 @@ class MatchingService:
         job_loc_lower = (job_location or "").lower()
         norm_loc_lower = (normalized_location or "").lower()
 
-        if pref_lower and any(p in job_loc_lower or p in norm_loc_lower for p in pref_lower):
+        if not pref_lower:
+            return 70.0  # Neutral baseline when no preferred locations specified
+
+        # Exact city or direct substring match
+        if any(p in job_loc_lower or p in norm_loc_lower for p in pref_lower):
             return 100.0
 
+        from app.core.location_taxonomy import expand_location_query, resolve_canonical_location
+        # Check if candidate preferred locations expand to include job location
+        expanded_prefs = expand_location_query(preferred_locations)
+        if any(token in job_loc_lower or token in norm_loc_lower for token in expanded_prefs):
+            return 95.0
+
+        # Check same state affinity (e.g. candidate wants Bengaluru/Karnataka, job is in Mysuru)
+        job_resolved = resolve_canonical_location(normalized_location or job_location)
+        if job_resolved.state_or_ut:
+            for p in preferred_locations:
+                p_resolved = resolve_canonical_location(p)
+                if p_resolved.state_or_ut and p_resolved.state_or_ut.lower() == job_resolved.state_or_ut.lower():
+                    return 80.0
+
         if (remote_type or "").upper() == "HYBRID":
-            if pref_lower and any(p in job_loc_lower or p in norm_loc_lower for p in pref_lower):
-                return 95.0
             return 60.0
 
-        # Known Indian tech hubs partial match
-        major_hubs = {"bengaluru", "bangalore", "gurugram", "gurgaon", "noida", "delhi ncr", "pune", "hyderabad", "mumbai"}
+        # Major Indian tech hubs baseline
+        major_hubs = {"bengaluru", "delhi ncr", "gurugram", "mumbai", "pune", "hyderabad", "chennai"}
         if any(hub in norm_loc_lower for hub in major_hubs):
             return 65.0
 

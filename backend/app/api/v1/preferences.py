@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,31 +12,47 @@ from app.services.preference_service import (
 from app.services.profile_service import get_candidate_profile
 from app.services.user_service import get_or_create_default_user
 from app.sources.registry import get_source_registry
+from app.config import settings
 from sqlalchemy import select
 
 router = APIRouter(prefix="/preferences", tags=["Preferences"])
 
 
 def _to_preference_response(pref) -> PreferenceResponse:
+    cfg = pref.ai_provider_config or {}
+    configured_set = set()
+    for prov_name, p_data in cfg.items():
+        if isinstance(p_data, dict) and p_data.get("configured"):
+            configured_set.add(prov_name)
+    if pref.ai_provider and pref.ai_api_key and pref.ai_api_key.strip():
+        configured_set.add(pref.ai_provider)
+
     return PreferenceResponse(
         id=pref.id,
         user_id=pref.user_id,
-        freshness_hours=pref.freshness_hours,
-        experience_max_years=pref.experience_max_years,
-        preferred_technologies=pref.preferred_technologies or [],
-        preferred_industries=pref.preferred_industries or [],
-        priority_companies=pref.priority_companies or [],
-        excluded_companies=pref.excluded_companies or [],
-        match_threshold=pref.match_threshold,
-        sync_interval_hours=pref.sync_interval_hours,
-        auto_sync_enabled=pref.auto_sync_enabled,
-        last_auto_sync_at=pref.last_auto_sync_at,
-        ai_provider=pref.ai_provider,
-        ai_model=pref.ai_model,
-        ai_base_url=pref.ai_base_url,
-        has_custom_api_key=bool(pref.ai_api_key and pref.ai_api_key.strip()),
+        freshness_hours=getattr(pref, "freshness_hours", 24) or 24,
+        experience_max_years=getattr(pref, "experience_max_years", 2) if getattr(pref, "experience_max_years", None) is not None else 2,
+        experience_level=getattr(pref, "experience_level", "ALL") or "ALL",
+        preferred_locations=getattr(pref, "preferred_locations", []) or [],
+        role_type=getattr(pref, "role_type", "ALL") or "ALL",
+        source_boards=pref.source_boards if getattr(pref, "source_boards", None) is not None else ["LINKEDIN", "NAUKRI", "INTERNSHALA"],
+        preferred_technologies=getattr(pref, "preferred_technologies", []) or [],
+        preferred_industries=getattr(pref, "preferred_industries", []) or [],
+        priority_companies=getattr(pref, "priority_companies", []) or [],
+        excluded_companies=getattr(pref, "excluded_companies", []) or [],
+        match_threshold=getattr(pref, "match_threshold", 60) if getattr(pref, "match_threshold", None) is not None else 60,
+        sync_interval_hours=getattr(pref, "sync_interval_hours", 24) if getattr(pref, "sync_interval_hours", None) is not None else 24,
+        auto_sync_enabled=bool(getattr(pref, "auto_sync_enabled", True)) if getattr(pref, "auto_sync_enabled", None) is not None else True,
+        last_auto_sync_at=getattr(pref, "last_auto_sync_at", None),
+        ai_provider=getattr(pref, "ai_provider", None),
+        ai_model=getattr(pref, "ai_model", None),
+        ai_base_url=getattr(pref, "ai_base_url", None),
+        ai_fallback_provider=getattr(pref, "ai_fallback_provider", None),
+        ai_fallback_model=getattr(pref, "ai_fallback_model", None),
+        has_custom_api_key=bool(getattr(pref, "ai_api_key", None) and pref.ai_api_key.strip()),
+        configured_providers=sorted(list(configured_set)),
         setup_completed=bool(getattr(pref, "setup_completed", False)),
-        updated_at=pref.updated_at,
+        updated_at=getattr(pref, "updated_at", None) or datetime.now(timezone.utc),
     )
 
 
@@ -59,7 +76,7 @@ async def get_setup_status(db: AsyncSession = Depends(get_db)):
     registry = get_source_registry()
     has_sources = any(s.enabled for s in registry._sources.values()) if registry._sources else True
 
-    has_ai_provider = bool(pref.ai_provider or pref.ai_model)
+    has_ai_provider = bool(pref.ai_provider or pref.ai_model or settings.LLM_PROVIDER)
 
     profile_summary = None
     if profile:

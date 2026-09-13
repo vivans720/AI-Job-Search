@@ -1,4 +1,4 @@
-.PHONY: help setup db-up db-down db-logs backend frontend sync agent mcp test lint clean seed
+.PHONY: help setup db-up db-down db-logs backend frontend worker sync agent mcp test lint clean seed
 
 help:
 	@echo "Available commands:"
@@ -10,6 +10,7 @@ help:
 	@echo "  make db-down      - Stop postgres container"
 	@echo "  make db-logs      - View postgres container logs"
 	@echo "  make backend      - Start FastAPI backend server"
+	@echo "  make worker       - Start background job queue worker"
 	@echo "  make frontend     - Start Next.js development server"
 	@echo "  make seed         - Seed initial candidate profile into database"
 	@echo "  make sync         - Run live job ingestion script"
@@ -45,6 +46,9 @@ db-logs:
 
 backend:
 	@./backend.sh
+
+worker:
+	@cd backend && .venv/bin/python3 -m app.worker
 
 frontend:
 	@cd frontend && npm run dev

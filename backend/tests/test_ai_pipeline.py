@@ -41,6 +41,16 @@ async def test_extract_candidate_profile_structured():
     assert "React" in profile.frameworks  # Normalized from 'reactjs'
     assert profile.experience_level == "FRESHER"
 
+    # Test fractional experience_years (e.g. 0.5 from internship)
+    mock_provider.complete_json = AsyncMock(return_value={
+        "candidate_name": "Candidate",
+        "experience_years": 0.5,
+        "skills": ["Python"],
+    })
+    p2 = await service.extract_candidate_profile("Internship resume text")
+    assert p2.experience_years == 0.5
+    assert p2.candidate_name == "Candidate"
+
 
 @pytest.mark.asyncio
 async def test_normalize_skills_canonical_dict():

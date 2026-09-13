@@ -849,7 +849,7 @@ class NaukriAdapter(JobSource):
         if norm is None:
             return None
 
-        # Enhance skills via shared JobSkillExtractionService (deterministic first, LLM fallback if uncertain)
+        # Enhance skills via shared JobSkillExtractionService (fast deterministic extraction + canonical normalization)
         explicit_skills: list[str] = []
         payload_skills = raw.raw_payload.get("tagsAndSkills") or raw.raw_payload.get("skills") or ""
         if isinstance(payload_skills, str) and payload_skills.strip():

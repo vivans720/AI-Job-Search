@@ -67,7 +67,7 @@ export default function WhyThisJobCard({ jobId, initialData, onClose }: WhyThisJ
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/v1/jobs/${jobId}/why?use_llm=true`);
+        const res = await fetch(`http://localhost:8000/api/v1/jobs/${jobId}/why?use_llm=true`);
         if (!res.ok) {
           throw new Error(`Failed to load explanation (${res.status})`);
         }

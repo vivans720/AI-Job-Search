@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
   Compass,
   Bookmark,
   Settings,
@@ -11,14 +10,14 @@ import {
   ShieldCheck,
   User,
   FileText,
-  Wand2,
+  Cpu,
+  Sliders,
 } from "lucide-react";
 
 interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  badge?: string;
 }
 
 interface NavGroup {
@@ -30,7 +29,6 @@ const navGroups: NavGroup[] = [
   {
     title: "INTELLIGENCE",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/jobs", label: "Job Discovery", icon: Compass },
     ],
   },
@@ -44,8 +42,9 @@ const navGroups: NavGroup[] = [
     title: "CANDIDATE & SETUP",
     items: [
       { href: "/profile", label: "Profile", icon: User },
+      { href: "/preferences", label: "Preferences", icon: Sliders },
       { href: "/resume", label: "Resume", icon: FileText },
-      { href: "/setup", label: "Setup Wizard", icon: Wand2 },
+      { href: "/ai-provider", label: "AI Provider", icon: Cpu },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -87,7 +86,7 @@ export function Sidebar() {
               const Icon = item.icon;
               const isActive =
                 pathname === item.href ||
-                (item.href === "/dashboard" && pathname === "/");
+                (item.href === "/jobs" && pathname === "/");
 
               return (
                 <Link

@@ -3,7 +3,7 @@ import functools
 import hashlib
 import json
 import structlog
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from app.core.redis import get_redis
 
 logger = structlog.get_logger(__name__)

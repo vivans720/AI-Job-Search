@@ -264,26 +264,3 @@ async def resilient_fetch(
             )
 
     return HTTPResult(status_code=0, text="", error="MAX_RETRIES_EXCEEDED", attempt_count=max_retries)
-
-
-async def resilient_fetch_text(
-    url: str,
-    *,
-    headers: dict[str, str] | None = None,
-    timeout: float = 15.0,
-    max_retries: int = 3,
-    base_delay: float = 1.0,
-    follow_redirects: bool = True,
-    caller_tag: str = "http_client",
-) -> str | None:
-    """Convenience helper that returns the text body on 200 OK, or None on failure."""
-    res = await resilient_fetch(
-        url,
-        headers=headers,
-        timeout=timeout,
-        max_retries=max_retries,
-        base_delay=base_delay,
-        follow_redirects=follow_redirects,
-        caller_tag=caller_tag,
-    )
-    return res.text if res.is_success else None

@@ -6,10 +6,9 @@ Provides:
 - Directory traversal guards for local storage.
 """
 import os
-import re
 import uuid
 from pathlib import Path
-from fastapi import HTTPException, UploadFile, status
+from fastapi import HTTPException, status
 
 # Allowed MIME types and extensions for candidate resumes
 ALLOWED_RESUME_EXTENSIONS = {".pdf", ".docx", ".txt"}

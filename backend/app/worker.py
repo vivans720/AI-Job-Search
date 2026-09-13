@@ -1,6 +1,5 @@
 import asyncio
 import signal
-import sys
 import structlog
 import redis.asyncio as aioredis
 from app.config import settings

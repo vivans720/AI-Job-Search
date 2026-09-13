@@ -1,15 +1,16 @@
 from typing import Any
 import structlog
-from openai import AsyncOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.config import settings
-from app.intelligence.base import BaseAIProvider, clean_and_extract_json
+from app.intelligence.langchain_adapter import LangChainAIProvider
+from app.intelligence.models import ProviderCapabilities
 
 logger = structlog.get_logger(__name__)
 
 
-class GeminiProvider(BaseAIProvider):
-    """Google Gemini provider via its official OpenAI-compatible endpoint."""
+class GeminiProvider(LangChainAIProvider):
+    """Google Gemini provider built on official LangChain ChatGoogleGenerativeAI integration."""
 
     provider_name: str = "gemini"
 
@@ -19,62 +20,32 @@ class GeminiProvider(BaseAIProvider):
         api_key: str | None = None,
         model: str | None = None,
         timeout: float | None = None,
+        **extra_kwargs: Any,
     ):
-        self.base_url = (base_url or settings.GEMINI_BASE_URL).rstrip("/")
-        self.api_key = api_key or settings.GEMINI_API_KEY or "dummy-gemini-key"
-        self.model = model or settings.GEMINI_MODEL
-        self.timeout = timeout or settings.GEMINI_TIMEOUT
-        # Gemini provides OpenAI v1 compatibility at /v1beta/openai/
-        self.client = AsyncOpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            timeout=self.timeout,
+        target_model = model or settings.GEMINI_MODEL
+        target_api_key = api_key or settings.GEMINI_API_KEY or "dummy-gemini-key"
+        target_timeout = timeout or settings.GEMINI_TIMEOUT
+
+        m = target_model.lower()
+        capabilities = ProviderCapabilities(
+            supports_streaming=True,
+            supports_tools=True,
+            supports_structured_output=True,
+            supports_vision=True,
+            supports_reasoning="flash-thinking" in m or "thinking" in m or "pro" in m,
+            supports_model_discovery=True,
         )
 
-    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
-        model = kwargs.pop("model", self.model)
-        temperature = kwargs.pop("temperature", 0.2)
-        max_tokens = kwargs.pop("max_tokens", 4096)
+        chat_model = ChatGoogleGenerativeAI(
+            model=target_model,
+            google_api_key=target_api_key,
+            timeout=target_timeout,
+            **extra_kwargs,
+        )
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,  # type: ignore
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs,
-            )
-            content = response.choices[0].message.content or ""
-            return content.strip()
-        except Exception as e:
-            logger.error("gemini_complete_failed", error=str(e), model=model)
-            raise
-
-    async def complete_json(
-        self, messages: list[dict[str, str]], schema: type | dict | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
-        model = kwargs.pop("model", self.model)
-        temperature = kwargs.pop("temperature", 0.1)
-        max_tokens = kwargs.pop("max_tokens", 4096)
-
-        try:
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,  # type: ignore
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format={"type": "json_object"},
-                **kwargs,
-            )
-            raw = response.choices[0].message.content or "{}"
-            return clean_and_extract_json(raw)
-        except Exception as e:
-            logger.warning("gemini_json_fallback", error=str(e))
-            text = await self.complete(
-                messages,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs,
-            )
-            return clean_and_extract_json(text)
+        super().__init__(
+            llm=chat_model,
+            provider_name="gemini",
+            model=target_model,
+            capabilities=capabilities,
+        )

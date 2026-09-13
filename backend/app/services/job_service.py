@@ -146,30 +146,18 @@ async def search_jobs_db(
                 continue
 
         if locs_lower:
+            from app.core.location_taxonomy import expand_location_query
             is_remote_match = include_remote and job.remote_type == "REMOTE"
             job_loc_l = (job.location or "").lower()
             job_norm_l = (job.normalized_location or "").lower()
 
-            loc_match = is_remote_match or any(
-                loc in job_loc_l or loc in job_norm_l
-                for loc in locs_lower
-            )
+            # Expand queried locations (includes state child cities, metro cluster cities, and aliases)
+            expanded_search_tokens = expand_location_query(locations)
 
-            # Major Indian Tech Metro Aliases
-            metro_clusters = [
-                {"delhi", "noida", "gurgaon", "gurugram", "delhi ncr", "greater noida", "ghaziabad", "faridabad"},
-                {"bangalore", "bengaluru", "bangalore urban", "bengaluru east", "bengaluru south", "greater bengaluru area"},
-                {"mumbai", "bombay", "navi mumbai", "thane"},
-                {"hyderabad", "secunderabad", "cyberabad"},
-                {"chennai", "madras", "greater chennai area"},
-                {"kolkata", "calcutta"},
-            ]
-            if not loc_match:
-                for cluster in metro_clusters:
-                    if any(a in locs_lower for a in cluster):
-                        if any(a in job_loc_l or a in job_norm_l for a in cluster):
-                            loc_match = True
-                            break
+            loc_match = is_remote_match or any(
+                token in job_loc_l or token in job_norm_l
+                for token in expanded_search_tokens
+            )
 
             if not loc_match:
                 continue
@@ -206,6 +194,7 @@ async def search_jobs_db(
                 "title": j.title,
                 "company": j.company_name,
                 "location": j.location,
+                "normalized_location": j.normalized_location,
                 "remote_type": j.remote_type,
                 "employment_type": j.employment_type or "FULL_TIME",
                 "experience": exp_display,
@@ -565,14 +554,8 @@ async def get_job_facets_db(
     query_lower = query.lower().strip() if query and query.strip() else None
     locs_lower = [loc.lower() for loc in locations] if locations else []
 
-    metro_clusters = [
-        {"delhi", "noida", "gurgaon", "gurugram", "delhi ncr", "greater noida", "ghaziabad", "faridabad"},
-        {"bangalore", "bengaluru", "bangalore urban", "bengaluru east", "bengaluru south", "greater bengaluru area"},
-        {"mumbai", "bombay", "navi mumbai", "thane"},
-        {"hyderabad", "secunderabad", "cyberabad"},
-        {"chennai", "madras", "greater chennai area"},
-        {"kolkata", "calcutta"},
-    ]
+    from app.core.location_taxonomy import expand_location_query, resolve_canonical_location
+    expanded_facet_locations = expand_location_query(locations)
 
     def matches_location(job: Job) -> bool:
         if not locs_lower:
@@ -580,12 +563,8 @@ async def get_job_facets_db(
         is_remote_match = job.remote_type == "REMOTE"
         job_loc_l = (job.location or "").lower()
         job_norm_l = (job.normalized_location or "").lower()
-        if is_remote_match or any(loc in job_loc_l or loc in job_norm_l for loc in locs_lower):
+        if is_remote_match or any(loc in job_loc_l or loc in job_norm_l for loc in expanded_facet_locations):
             return True
-        for cluster in metro_clusters:
-            if any(a in locs_lower for a in cluster):
-                if any(a in job_loc_l or a in job_norm_l for a in cluster):
-                    return True
         return False
 
     def matches_employment_type(job: Job) -> bool:
@@ -629,10 +608,10 @@ async def get_job_facets_db(
             if query_lower not in haystack:
                 continue
 
-        # Location facet count (reflecting query/source/freshness but all locations)
-        loc = (job.location or "").strip()
-        if loc:
-            location_counts[loc] = location_counts.get(loc, 0) + 1
+        # Location facet count aggregated by canonical form
+        canonical_loc = job.normalized_location or (job.location or "").strip()
+        if canonical_loc:
+            location_counts[canonical_loc] = location_counts.get(canonical_loc, 0) + 1
 
         # Check if job satisfies current active location, employment_type, and experience filters
         loc_ok = matches_location(job)

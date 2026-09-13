@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Any, Callable
+from typing import Any
 from bs4 import BeautifulSoup
 import structlog
 
@@ -186,34 +186,3 @@ def extract_job_posting_ld(html: str) -> dict[str, Any] | None:
         "source_type": "JSON_LD",
         "raw_node": job_node,
     }
-
-
-def parse_job_with_fallback(
-    html: str,
-    css_fallback_fn: Callable[[str], dict[str, Any]] | None = None,
-) -> tuple[dict[str, Any] | None, str]:
-    """
-    Parses job listing data prioritizing Schema.org JSON-LD structural metadata.
-    If JSON-LD metadata is absent or missing essential fields (title, company, or description),
-    falls back gracefully to the provided CSS selector parsing function.
-
-    Returns:
-        tuple of (job_data_dict, source_channel: "JSON_LD" | "CSS_SELECTOR" | "NONE")
-    """
-    # 1. Attempt primary JSON-LD extraction
-    ld_job = extract_job_posting_ld(html)
-    if ld_job and ld_job.get("title") and (ld_job.get("company_name") or ld_job.get("description")):
-        logger.debug("job_parsed_via_json_ld", title=ld_job["title"], company=ld_job["company_name"])
-        return ld_job, "JSON_LD"
-
-    # 2. Fall back to CSS selector parser
-    if css_fallback_fn:
-        try:
-            css_job = css_fallback_fn(html)
-            if css_job and css_job.get("title"):
-                logger.debug("job_parsed_via_css_fallback", title=css_job["title"])
-                return css_job, "CSS_SELECTOR"
-        except Exception as e:
-            logger.warning("css_fallback_parsing_failed", error=str(e))
-
-    return None, "NONE"

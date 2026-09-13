@@ -28,7 +28,7 @@ class CandidateProfileOutput(BaseModel):
     candidate_name: str
     email: str | None = None
     experience_level: str = "FRESHER"  # FRESHER, ENTRY_LEVEL, MID, SENIOR
-    experience_years: int = 0
+    experience_years: float = 0
     target_roles: list[str] = Field(default_factory=list)
     programming_languages: list[str] = Field(default_factory=list)
     frameworks: list[str] = Field(default_factory=list)

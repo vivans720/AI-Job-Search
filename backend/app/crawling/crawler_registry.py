@@ -33,22 +33,7 @@ def get_crawler_provider() -> CrawlerProvider:
     return _crawler_provider
 
 
-async def get_crawler_capability() -> dict:
-    """Distinct states: code exists, dependency installed, enabled, healthy."""
-    from app.crawling.crawl4ai_provider import Crawl4AICrawlerProvider as LiveProvider
 
-    installed = is_crawl4ai_dependency_installed()
-    enabled = bool(getattr(settings, "CRAWL4AI_ENABLED", True))
-    provider = get_crawler_provider()
-    healthy = await provider.health_check()
-    return {
-        "installed": installed,
-        "enabled": enabled,
-        "healthy": bool(healthy),
-        "provider": type(provider).__name__,
-        "live": isinstance(provider, LiveProvider) and enabled and installed,
-        "used_by": ["linkedin", "internshala", "naukri"] if isinstance(provider, LiveProvider) and enabled else [],
-    }
 
 
 def reset_crawler_provider() -> None:

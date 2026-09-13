@@ -1,5 +1,6 @@
 from typing import Any
 import structlog
+
 from pydantic import BaseModel
 
 from app.intelligence.base import BaseAIProvider
@@ -98,26 +99,6 @@ Provide a structured bridging plan in valid JSON format:
             learning_roadmap=roadmap,
             interview_talking_points=talking_points,
         )
-
-    async def generate_match_explanation(
-        self, job_title: str, company: str, matched_skills: list[str], missing_skills: list[str]
-    ) -> str:
-        """Generates a motivating 2-sentence rationale for a match."""
-        prompt = (
-            f"Job: {job_title} at {company}.\n"
-            f"Matched skills: {', '.join(matched_skills[:8])}.\n"
-            f"Missing skills: {', '.join(missing_skills[:5])}.\n"
-            "Generate a crisp 2-sentence rationale on why this job is worth applying to and how the candidate fits."
-        )
-        messages = [
-            {"role": "system", "content": "You are a direct tech career coach. Write 2 punchy sentences."},
-            {"role": "user", "content": prompt},
-        ]
-        try:
-            return await self.provider.complete(messages, max_tokens=150)
-        except Exception as e:
-            logger.warning("generate_match_explanation_fallback", error=str(e))
-            return f"Strong alignment in {', '.join(matched_skills[:3])}. Direct manual application recommended."
 
     async def extract_candidate_profile(self, resume_text: str) -> CandidateProfileOutput:
         """Phase 40: Extracts high-precision structured candidate profile using LLM with Pydantic output."""

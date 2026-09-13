@@ -1,15 +1,16 @@
 from typing import Any
-import httpx
 import structlog
+from langchain_anthropic import ChatAnthropic
 
 from app.config import settings
-from app.intelligence.base import BaseAIProvider, clean_and_extract_json
+from app.intelligence.langchain_adapter import LangChainAIProvider
+from app.intelligence.models import ProviderCapabilities
 
 logger = structlog.get_logger(__name__)
 
 
-class AnthropicProvider(BaseAIProvider):
-    """Anthropic Claude provider via direct Messages REST API."""
+class AnthropicProvider(LangChainAIProvider):
+    """Anthropic Claude provider built on official LangChain ChatAnthropic integration."""
 
     provider_name: str = "anthropic"
 
@@ -19,65 +20,37 @@ class AnthropicProvider(BaseAIProvider):
         api_key: str | None = None,
         model: str | None = None,
         timeout: float | None = None,
+        **extra_kwargs: Any,
     ):
-        self.base_url = (base_url or settings.ANTHROPIC_BASE_URL).rstrip("/")
-        self.api_key = api_key or settings.ANTHROPIC_API_KEY or "dummy-anthropic-key"
-        self.model = model or settings.ANTHROPIC_MODEL
-        self.timeout = timeout or settings.ANTHROPIC_TIMEOUT
+        target_model = model or settings.ANTHROPIC_MODEL
+        target_api_key = api_key or settings.ANTHROPIC_API_KEY or "dummy-anthropic-key"
+        target_timeout = timeout or settings.ANTHROPIC_TIMEOUT
+        target_base_url = base_url or settings.ANTHROPIC_BASE_URL
 
-    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
-        model = kwargs.pop("model", self.model)
-        temperature = kwargs.pop("temperature", 0.2)
-        max_tokens = kwargs.pop("max_tokens", 4096)
+        m = target_model.lower()
+        capabilities = ProviderCapabilities(
+            supports_streaming=True,
+            supports_tools=True,
+            supports_structured_output=True,
+            supports_vision="sonnet" in m or "3-5" in m or "opus" in m,
+            supports_reasoning="3-7" in m or "thinking" in m,
+            supports_model_discovery=False,
+        )
 
-        # Anthropic separates system message from user/assistant messages
-        system_content = ""
-        claude_messages = []
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "system":
-                system_content += ("\n" + content if system_content else content)
-            else:
-                claude_messages.append({"role": role, "content": content})
-
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
+        chat_kwargs: dict[str, Any] = {
+            "model_name": target_model,
+            "api_key": target_api_key,
+            "timeout": target_timeout,
+            **extra_kwargs,
         }
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": claude_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-        if system_content:
-            payload["system"] = system_content
+        if target_base_url and "api.anthropic.com" not in target_base_url:
+            chat_kwargs["base_url"] = target_base_url.rstrip("/")
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(
-                f"{self.base_url}/messages",
-                headers=headers,
-                json=payload,
-            )
-            if resp.status_code != 200:
-                logger.error("anthropic_error_response", status=resp.status_code, body=resp.text)
-                resp.raise_for_status()
-            data = resp.json()
-            content_blocks = data.get("content", [])
-            full_text = "".join(b.get("text", "") for b in content_blocks if b.get("type") == "text")
-            return full_text.strip()
+        chat_model = ChatAnthropic(**chat_kwargs)
 
-    async def complete_json(
-        self, messages: list[dict[str, str]], schema: type | dict | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
-        """Runs complete and extracts JSON object."""
-        # Instruct Claude to output strictly JSON
-        augmented_messages = list(messages)
-        augmented_messages.append({
-            "role": "user",
-            "content": "Ensure the response is valid, parsable JSON without preamble or explanation.",
-        })
-        text = await self.complete(augmented_messages, **kwargs)
-        return clean_and_extract_json(text)
+        super().__init__(
+            llm=chat_model,
+            provider_name="anthropic",
+            model=target_model,
+            capabilities=capabilities,
+        )

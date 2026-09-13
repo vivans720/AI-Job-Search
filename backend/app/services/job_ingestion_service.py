@@ -165,7 +165,7 @@ class JobIngestionService:
         # 4. Stage 1: Cheap deterministic deduplication (Levels 1-4: URL, Source ID, Meta, Fuzzy text)
         canonical_jobs, cheap_audit_log = self.dedup_service.deduplicate_batch(surviving_jobs)
 
-        # 5. Phase 43: AI & Hybrid Skill Extraction + Taxonomy Normalization on surviving canonical jobs
+        # 5. Phase 43: Deterministic Skill Extraction + Taxonomy Normalization on surviving canonical jobs
         ai_extracted_count = 0
         skills_normalized_count = 0
 

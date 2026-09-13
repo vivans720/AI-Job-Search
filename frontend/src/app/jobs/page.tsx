@@ -18,12 +18,12 @@ import {
   RotateCcw,
   Check,
   Ban,
-  Sparkles,
   Eye,
-  SlidersHorizontal,
+  Sliders,
 } from "lucide-react";
 import { SyncProgressModal } from "@/components/SyncProgressModal";
 import JobDetailDrawer from "@/components/jobs/JobDetailDrawer";
+import { loadUserPreferences } from "@/lib/preferences";
 
 interface SkillPartition {
   matched: string[];
@@ -69,6 +69,7 @@ interface JobItem {
   title: string;
   company: string;
   location: string;
+  normalized_location?: string;
   remote_type: string;
   employment_type?: string;
   salary: string;
@@ -105,9 +106,7 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Phase 46: View Mode ('all' or 'for_you')
-  const [viewTab, setViewTab] = useState<"all" | "for_you">("all");
-  const [minScoreThreshold, setMinScoreThreshold] = useState<number>(40);
+
 
   // Phase 46: Job Detail Drawer State
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -126,6 +125,10 @@ export default function JobsPage() {
   const [freshnessHours, setFreshnessHours] = useState(24);
   const [sortBy, setSortBy] = useState<"match" | "freshness">("match");
   const [experienceFilter, setExperienceFilter] = useState<string>("ALL");
+  const [matchThreshold, setMatchThreshold] = useState<number | null>(null);
+  const [excludedCompanies, setExcludedCompanies] = useState<string[]>([]);
+  const [applyingPrefs, setApplyingPrefs] = useState(false);
+  const [prefToast, setPrefToast] = useState<string | null>(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -277,10 +280,7 @@ export default function JobsPage() {
     if (typeFilter !== "ALL") {
       params.set("employment_type", typeFilter);
     }
-    if (viewTab === "for_you") {
-      params.set("view", "for_you");
-      params.set("min_score", minScoreThreshold.toString());
-    }
+
     params.set("page", targetPage.toString());
     params.set("page_size", pageSize.toString());
 
@@ -358,7 +358,7 @@ export default function JobsPage() {
   useEffect(() => {
     fetchJobs(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewTab, minScoreThreshold, sourceFilter, freshnessHours, sortBy, selectedLocations, experienceFilter, typeFilter]);
+  }, [sourceFilter, freshnessHours, sortBy, selectedLocations, experienceFilter, typeFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -378,9 +378,59 @@ export default function JobsPage() {
     setTypeFilter("ALL");
     setSourceFilter("ALL");
     setFreshnessHours(24);
+    setSyncFreshness(24);
     setSortBy("match");
     setExperienceFilter("ALL");
+    setMatchThreshold(null);
+    setExcludedCompanies([]);
     clearQuery();
+  };
+
+  const handleApplyMyPreferences = async () => {
+    setApplyingPrefs(true);
+    try {
+      const prefs = await loadUserPreferences();
+
+      // 1. Freshness
+      setFreshnessHours(prefs.freshness_hours);
+      setSyncFreshness(prefs.freshness_hours);
+
+      // 2. Experience level
+      setExperienceFilter(prefs.experience_level || "ALL");
+
+      // 3. Role type
+      setTypeFilter(prefs.role_type || "ALL");
+
+      // 4. Source board
+      if (prefs.source_boards && prefs.source_boards.length === 1) {
+        const board = prefs.source_boards[0].toUpperCase();
+        if (board === "LINKEDIN" || board === "NAUKRI" || board === "INTERNSHALA") {
+          setSourceFilter(board);
+        } else {
+          setSourceFilter("ALL");
+        }
+      } else {
+        setSourceFilter("ALL");
+      }
+
+      // 5. Preferred locations
+      setSelectedLocations(prefs.preferred_locations || []);
+
+      // 6. Minimum match threshold & excluded companies
+      setMatchThreshold(typeof prefs.match_threshold === "number" ? prefs.match_threshold : null);
+      setExcludedCompanies(prefs.excluded_companies || []);
+
+      // 7. Reset to page 1 and fetch jobs
+      setCurrentPage(1);
+      fetchJobs(1);
+
+      setPrefToast("Preferences applied to filters");
+      setTimeout(() => setPrefToast(null), 3500);
+    } catch (err) {
+      console.error("Failed to load user preferences:", err);
+    } finally {
+      setApplyingPrefs(false);
+    }
   };
 
   const handleSave = async (job: JobItem) => {
@@ -564,11 +614,32 @@ export default function JobsPage() {
     return map;
   }, [facets, jobs]);
 
+  const TOP_HUBS = useMemo(() => [
+    "Bengaluru",
+    "Delhi NCR",
+    "Mumbai",
+    "Hyderabad",
+    "Pune",
+    "Chennai",
+    "Kolkata",
+    "Gurugram",
+    "Noida",
+    "Remote",
+    "Remote (India)",
+  ], []);
+
   const visibleLocations = useMemo(() => {
     const q = locationSearch.trim().toLowerCase();
-    if (!q) return availableLocations;
-    return availableLocations.filter((loc) => loc.toLowerCase().includes(q));
-  }, [availableLocations, locationSearch]);
+    const source = availableLocations.length > 0 ? availableLocations : TOP_HUBS;
+    if (!q) {
+      // Prioritize top tech hubs first, then alphabetical
+      const topSet = new Set(TOP_HUBS.map(h => h.toLowerCase()));
+      const hubsInList = source.filter(l => topSet.has(l.toLowerCase()));
+      const others = source.filter(l => !topSet.has(l.toLowerCase())).sort((a, b) => a.localeCompare(b));
+      return [...new Set([...hubsInList, ...others])];
+    }
+    return source.filter((loc) => loc.toLowerCase().includes(q));
+  }, [availableLocations, locationSearch, TOP_HUBS]);
 
   const counts = {
     all: facets?.total ?? totalCount ?? jobs.length,
@@ -609,9 +680,15 @@ export default function JobsPage() {
   const filteredJobs = jobs.filter((job) => {
     if (selectedLocations.length > 0) {
       const jobLoc = (job.location ?? "").toLowerCase();
+      const jobNormLoc = (job.normalized_location ?? "").toLowerCase();
       const matches = selectedLocations.some((loc) => {
         const normalizedLoc = loc.toLowerCase();
-        return jobLoc === normalizedLoc || jobLoc.includes(normalizedLoc);
+        return (
+          jobLoc === normalizedLoc ||
+          jobLoc.includes(normalizedLoc) ||
+          jobNormLoc === normalizedLoc ||
+          jobNormLoc.includes(normalizedLoc)
+        );
       });
       if (!matches) return false;
     }
@@ -657,6 +734,25 @@ export default function JobsPage() {
       if (!hasSkill) return false;
     }
 
+    // Excluded companies filtering (R1 & R2)
+    if (excludedCompanies.length > 0) {
+      const jobCompany = (job.company ?? "").toLowerCase().trim();
+      const isExcluded = excludedCompanies.some((exc) => {
+        const norm = exc.toLowerCase().trim();
+        return norm.length > 0 && (jobCompany === norm || jobCompany.includes(norm) || norm.includes(jobCompany));
+      });
+      if (isExcluded) return false;
+    }
+
+    // Minimum match threshold filtering (R1 & R2)
+    if (matchThreshold !== null && matchThreshold > 0) {
+      const rawScore = job.match?.overall_score ?? job.quality_score;
+      if (rawScore !== undefined && rawScore !== null) {
+        const normalizedScore = rawScore <= 1.0 && rawScore > 0 ? rawScore * 100 : rawScore;
+        if (normalizedScore < matchThreshold) return false;
+      }
+    }
+
     return true;
   });
 
@@ -681,6 +777,8 @@ export default function JobsPage() {
     typeFilter !== "ALL" ||
     sourceFilter !== "ALL" ||
     experienceFilter !== "ALL" ||
+    matchThreshold !== null ||
+    excludedCompanies.length > 0 ||
     query.trim().length > 0;
 
   const clearLocations = () => {
@@ -800,8 +898,12 @@ export default function JobsPage() {
               <option value="internshala" className="bg-obsidian-950 text-zinc-200">Internshala</option>
             </select>
             <select
-              value={syncFreshness}
-              onChange={(e) => setSyncFreshness(Number(e.target.value))}
+              value={freshnessHours}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setSyncFreshness(val);
+                setFreshnessHours(val);
+              }}
               disabled={syncing}
               className="bg-transparent text-zinc-300 px-2 py-1.5 rounded-lg focus:outline-none text-xs font-medium cursor-pointer border-l border-white/[0.08]"
               title="Freshness Window"
@@ -889,67 +991,7 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Phase 46: Dual Views Tab Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1.5 rounded-2xl bg-obsidian-900/80 border border-white/[0.08] shadow-sm">
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => {
-              setViewTab("all");
-              setCurrentPage(1);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-              viewTab === "all"
-                ? "bg-white/[0.12] text-white shadow-sm border border-white/[0.16]"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
-            }`}
-          >
-            <Briefcase className="w-3.5 h-3.5 text-zinc-400" />
-            <span>All Fresh Jobs</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/[0.06] text-zinc-400 font-tabular font-medium">
-              {facets?.total ?? totalCount}
-            </span>
-          </button>
 
-          <button
-            onClick={() => {
-              setViewTab("for_you");
-              setCurrentPage(1);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-              viewTab === "for_you"
-                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-surface-glow font-bold"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>For You (Personalized)</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-tabular font-medium border border-emerald-500/20">
-              Ranked Fit
-            </span>
-          </button>
-        </div>
-
-        {/* Min Score filter if in For You mode */}
-        {viewTab === "for_you" && (
-          <div className="flex items-center gap-2 px-3 py-1 text-xs text-zinc-400">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span className="text-[11px]">Fit Threshold:</span>
-            <select
-              value={minScoreThreshold}
-              onChange={(e) => {
-                setMinScoreThreshold(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="bg-obsidian-950 text-emerald-300 border border-white/[0.08] rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none"
-            >
-              <option value={30}>≥30% Match</option>
-              <option value={40}>≥40% Match (Recommended)</option>
-              <option value={60}>≥60% Strong Fit</option>
-              <option value={75}>≥75% High Affinity</option>
-            </select>
-          </div>
-        )}
-      </div>
 
       {/* Search Input */}
       <div className="p-4 rounded-2xl bg-obsidian-900/70 border border-white/[0.08] shadow-surface-inset">
@@ -1054,6 +1096,7 @@ export default function JobsPage() {
                       visibleLocations.map((loc) => {
                         const checked = selectedLocations.includes(loc);
                         const count = locationCounts[loc] ?? 0;
+                        const isTopHub = TOP_HUBS.some(h => h.toLowerCase() === loc.toLowerCase());
                         return (
                           <button
                             key={loc}
@@ -1073,6 +1116,11 @@ export default function JobsPage() {
                             <span className="flex-1 text-xs text-zinc-200 truncate" title={loc}>
                               {loc}
                             </span>
+                            {isTopHub && (
+                              <span className="px-1 py-0.2 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                Hub
+                              </span>
+                            )}
                             <span className="px-1.5 py-0.2 rounded-full text-[10px] font-tabular font-semibold bg-white/[0.06] text-zinc-500">
                               {count}
                             </span>
@@ -1136,7 +1184,10 @@ export default function JobsPage() {
               {[1, 4, 8, 12, 16, 24].map((h) => (
                 <button
                   key={h}
-                  onClick={() => setFreshnessHours(h)}
+                  onClick={() => {
+                    setFreshnessHours(h);
+                    setSyncFreshness(h);
+                  }}
                   className={`py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
                     freshnessHours === h
                       ? "bg-white/[0.12] text-zinc-100 border border-white/[0.2] shadow-sm"
@@ -1197,6 +1248,46 @@ export default function JobsPage() {
                 </button>
               </span>
             ))}
+
+            <button
+              onClick={handleApplyMyPreferences}
+              disabled={applyingPrefs}
+              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all px-2.5 py-1 rounded-lg font-medium shadow-sm disabled:opacity-50"
+              title="Apply saved search preferences to active filters"
+            >
+              {applyingPrefs ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+              ) : (
+                <Sliders className="w-3.5 h-3.5 text-emerald-400" />
+              )}
+              <span>{applyingPrefs ? "Applying..." : "My Preferences"}</span>
+            </button>
+
+            {matchThreshold !== null && matchThreshold > 0 && (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 text-xs font-medium">
+                <span>Min Match: {matchThreshold}%</span>
+                <button
+                  onClick={() => setMatchThreshold(null)}
+                  className="hover:text-emerald-100"
+                  title="Remove threshold filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {excludedCompanies.length > 0 && (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/25 text-xs font-medium">
+                <span>Excluded: {excludedCompanies.length} companies</span>
+                <button
+                  onClick={() => setExcludedCompanies([])}
+                  className="hover:text-rose-100"
+                  title="Clear excluded companies filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
 
             {hasActiveFilters && (
               <button
@@ -1461,10 +1552,10 @@ export default function JobsPage() {
                 </button>
               )}
               <Link
-                href="/setup"
+                href="/preferences"
                 className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl text-xs font-medium transition-colors border border-emerald-500/25"
               >
-                Rerun Setup Wizard
+                Configure Preferences
               </Link>
             </div>
           </div>
@@ -1512,6 +1603,14 @@ export default function JobsPage() {
           handleMarkApplied(j as JobItem);
         }}
       />
+
+      {/* Preferences Applied Toast Feedback (R2) */}
+      {prefToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-obsidian-900/95 border border-emerald-500/40 text-emerald-300 text-xs font-medium shadow-2xl backdrop-blur-md animate-fade-in">
+          <Check className="w-4 h-4 text-emerald-400" />
+          <span>{prefToast}</span>
+        </div>
+      )}
     </div>
   );
 }

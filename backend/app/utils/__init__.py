@@ -15,13 +15,11 @@ from app.utils.http_client import (
     fetch_via_tor_proxy,
     is_tor_proxy_available,
     resilient_fetch,
-    resilient_fetch_text,
 )
 from app.utils.json_ld import (
     clean_html_text,
     extract_job_posting_ld,
     extract_json_ld_blocks,
-    parse_job_with_fallback,
 )
 
 __all__ = [
@@ -37,9 +35,7 @@ __all__ = [
     "fetch_via_tor_proxy",
     "is_tor_proxy_available",
     "resilient_fetch",
-    "resilient_fetch_text",
     "clean_html_text",
     "extract_job_posting_ld",
     "extract_json_ld_blocks",
-    "parse_job_with_fallback",
 ]

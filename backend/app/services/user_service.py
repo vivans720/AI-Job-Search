@@ -1,9 +1,10 @@
 import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.config import settings
 from app.models.user import User
 
-DEFAULT_USER_EMAIL = "vivan@jobsearchai.local"
+DEFAULT_USER_EMAIL = settings.DEFAULT_USER_EMAIL
 
 
 async def get_or_create_default_user(db: AsyncSession) -> User:

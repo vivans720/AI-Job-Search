@@ -10,7 +10,9 @@ from app.intelligence.extractors import (
     extract_candidate_profile_from_text,
     extract_text_from_bytes,
 )
+from app.intelligence.llm_provider import create_ai_provider
 from app.models.resume import Resume
+from app.services.preference_service import get_or_create_preferences
 from app.services.profile_service import apply_resume_to_profile
 
 logger = structlog.get_logger(__name__)
@@ -47,8 +49,18 @@ async def process_and_save_resume(
     if not raw_text.strip():
         raise ValueError(f"Could not extract any text from resume file {filename}")
 
-    # 2. LLM structured extraction
-    extracted_data = await extract_candidate_profile_from_text(raw_text)
+    # 2. LLM structured extraction using user-configured AI provider
+    pref = await get_or_create_preferences(db, user_id)
+    ai_provider = create_ai_provider(
+        provider_name=pref.ai_provider,
+        model=pref.ai_model,
+        base_url=pref.ai_base_url,
+        api_key=pref.ai_api_key,
+        fallback_provider=pref.ai_fallback_provider,
+        fallback_model=pref.ai_fallback_model,
+        enable_gateway=True,
+    )
+    extracted_data = await extract_candidate_profile_from_text(raw_text, llm=ai_provider)
 
     # 3. Dense embedding via local BGE model
     # Combine skills, roles, projects, and summary for a rich semantic profile embedding

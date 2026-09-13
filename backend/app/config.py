@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Default Candidate / User
+    DEFAULT_USER_EMAIL: str = "candidate@jobsearchai.local"
+
     # Freshness (backend enforced)
     FRESHNESS_HOURS: int = 24
     DEFAULT_TIMEZONE: str = "Asia/Kolkata"
@@ -71,23 +74,61 @@ class Settings(BaseSettings):
     ANTHROPIC_BASE_URL: str = "https://api.anthropic.com/v1"
     ANTHROPIC_TIMEOUT: float = 45.0
 
+    # Fallback Provider Configuration
+    LLM_FALLBACK_PROVIDER: str | None = None
+    LLM_FALLBACK_MODEL: str | None = None
+
     # DeepSeek
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_MODEL: str = "deepseek-chat"
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
     DEEPSEEK_TIMEOUT: float = 45.0
 
-    # OmniRoute / Generic OpenAI Compatible (Fallback / Self-hosted proxy)
-    LLM_BASE_URL: str = "http://localhost:20128/v1"
+    # Groq
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    GROQ_TIMEOUT: float = 30.0
+
+    # OpenRouter
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "meta-llama/llama-3.3-70b-instruct"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_TIMEOUT: float = 45.0
+
+    # Cerebras
+    CEREBRAS_API_KEY: str = ""
+    CEREBRAS_MODEL: str = "llama3.3-70b"
+    CEREBRAS_BASE_URL: str = "https://api.cerebras.ai/v1"
+    CEREBRAS_TIMEOUT: float = 30.0
+
+    # Mistral
+    MISTRAL_API_KEY: str = ""
+    MISTRAL_MODEL: str = "mistral-small-latest"
+    MISTRAL_BASE_URL: str = "https://api.mistral.ai/v1"
+    MISTRAL_TIMEOUT: float = 45.0
+
+    # NVIDIA NIM
+    NVIDIA_NIM_API_KEY: str = ""
+    NVIDIA_NIM_MODEL: str = "meta/llama-3.3-70b-instruct"
+    NVIDIA_NIM_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
+    NVIDIA_NIM_TIMEOUT: float = 45.0
+
+    # OpenCode (Local / Remote AI Coding gateway)
+    OPENCODE_BASE_URL: str = "http://localhost:4096/v1"
+    OPENCODE_MODEL: str = "opencode-default"
+    OPENCODE_API_KEY: str = ""
+    OPENCODE_TIMEOUT: float = 45.0
+
+    # Generic / Local Fallback AI
+    LLM_BASE_URL: str = "http://localhost:11434/v1"
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "auto/best-fast"
     LLM_TIMEOUT: float = 45.0
+    CUSTOM_AI_BASE_URL: str = ""
+    CUSTOM_AI_API_KEY: str = ""
+    CUSTOM_AI_MODEL: str = ""
 
-    # LLM Skill Extraction Fallback
-    LLM_SKILL_EXTRACTION_ENABLED: bool = True
-    LLM_SKILL_EXTRACTION_TIMEOUT: float = 10.0
-    LLM_SKILL_EXTRACTION_MIN_DESCRIPTION_LENGTH: int = 200
-    LLM_SKILL_EXTRACTION_MIN_DETERMINISTIC_SKILLS: int = 2
 
     # Sources
     SOURCE_SAMPLE_ENABLED: bool = False

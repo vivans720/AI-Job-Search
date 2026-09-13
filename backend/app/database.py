@@ -34,6 +34,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_pgvector() -> None:
-    """Ensure pgvector extension is installed in PostgreSQL."""
+    """Ensure pgvector extension is installed and schema columns are synchronized."""
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        # Auto-migrate gateway and preference search columns if missing
+        await conn.execute(text("""
+            ALTER TABLE preferences
+            ADD COLUMN IF NOT EXISTS ai_fallback_provider VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS ai_fallback_model VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS ai_provider_config JSONB,
+            ADD COLUMN IF NOT EXISTS experience_level VARCHAR(50) DEFAULT 'ALL',
+            ADD COLUMN IF NOT EXISTS preferred_locations JSONB DEFAULT '[]'::jsonb,
+            ADD COLUMN IF NOT EXISTS role_type VARCHAR(50) DEFAULT 'ALL',
+            ADD COLUMN IF NOT EXISTS source_boards JSONB DEFAULT '["LINKEDIN", "NAUKRI", "INTERNSHALA"]'::jsonb;
+        """))

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, ForeignKey, Integer
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,14 +32,25 @@ class Preference(Base):
         DateTime(timezone=True), nullable=True, default=None
     )
 
-    # Dynamic AI Provider Overrides (Phase 39)
+    # Dynamic AI Provider Overrides (Phase 39 & Gateway Phase)
     ai_provider: Mapped[str | None] = mapped_column(nullable=True, default=None)
     ai_model: Mapped[str | None] = mapped_column(nullable=True, default=None)
     ai_base_url: Mapped[str | None] = mapped_column(nullable=True, default=None)
     ai_api_key: Mapped[str | None] = mapped_column(nullable=True, default=None)
+    ai_fallback_provider: Mapped[str | None] = mapped_column(nullable=True, default=None)
+    ai_fallback_model: Mapped[str | None] = mapped_column(nullable=True, default=None)
+    ai_provider_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
 
     # First-Launch Onboarding (Phase 42)
     setup_completed: Mapped[bool] = mapped_column(default=False)
+
+    # Search Preferences (R1)
+    experience_level: Mapped[str] = mapped_column(String(50), default="ALL")
+    preferred_locations: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    role_type: Mapped[str] = mapped_column(String(50), default="ALL")
+    source_boards: Mapped[list[str]] = mapped_column(
+        JSONB, default=lambda: ["LINKEDIN", "NAUKRI", "INTERNSHALA"]
+    )
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -48,3 +59,20 @@ class Preference(Base):
     )
 
     user: Mapped["User"] = relationship("User", back_populates="preferences")
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("freshness_hours", 24)
+        kwargs.setdefault("experience_max_years", 2)
+        kwargs.setdefault("match_threshold", 60)
+        kwargs.setdefault("sync_interval_hours", 24)
+        kwargs.setdefault("auto_sync_enabled", True)
+        kwargs.setdefault("setup_completed", False)
+        kwargs.setdefault("experience_level", "ALL")
+        kwargs.setdefault("role_type", "ALL")
+        kwargs.setdefault("preferred_locations", [])
+        kwargs.setdefault("source_boards", ["LINKEDIN", "NAUKRI", "INTERNSHALA"])
+        kwargs.setdefault("preferred_technologies", [])
+        kwargs.setdefault("preferred_industries", [])
+        kwargs.setdefault("priority_companies", [])
+        kwargs.setdefault("excluded_companies", [])
+        super().__init__(**kwargs)

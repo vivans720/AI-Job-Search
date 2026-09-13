@@ -16,14 +16,14 @@ from app.services.profile_service import get_candidate_profile
 async def seed_resume():
     root_dir = Path(__file__).resolve().parent.parent
     private_dir = root_dir / "data" / "private"
-    resume_path = private_dir / "Vivan_Sharma_Resume.pdf"
+    resume_path = private_dir / "candidate_resume.pdf"
 
     if not resume_path.exists():
         pdfs = sorted(private_dir.glob("*.pdf"))
         if pdfs:
             resume_path = pdfs[0]
         else:
-            print(f"Error: No resume PDF found in {private_dir}. Place your resume PDF there first.")
+            print(f"Error: No resume PDF found in {private_dir}. Place candidate_resume.pdf there first.")
             return
 
     print(f"Reading resume from {resume_path} ({resume_path.stat().st_size} bytes)...")

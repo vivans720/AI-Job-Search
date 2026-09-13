@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+from langchain_core.messages import AIMessage
 
 from app.intelligence.base import clean_and_extract_json
 from app.intelligence.llm_provider import create_ai_provider, get_llm_provider, reset_ai_provider_cache
@@ -49,27 +50,19 @@ def test_provider_factory_instances():
 @pytest.mark.asyncio
 async def test_ollama_provider_complete_mocked():
     provider = OllamaProvider()
-    with patch.object(provider.client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
-        mock_choice = MagicMock()
-        mock_choice.message.content = "Mocked Ollama reply"
-        mock_resp = MagicMock()
-        mock_resp.choices = [mock_choice]
-        mock_create.return_value = mock_resp
+    with patch.object(type(provider.llm), "ainvoke", new_callable=AsyncMock) as mock_invoke:
+        mock_invoke.return_value = AIMessage(content="Mocked Ollama reply")
 
         result = await provider.complete([{"role": "user", "content": "Hi"}])
         assert result == "Mocked Ollama reply"
-        mock_create.assert_called_once()
+        mock_invoke.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_openai_provider_complete_json_mocked():
     provider = OpenAIProvider(api_key="sk-test-key")
-    with patch.object(provider.client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
-        mock_choice = MagicMock()
-        mock_choice.message.content = '{"roles": ["Backend Engineer"]}'
-        mock_resp = MagicMock()
-        mock_resp.choices = [mock_choice]
-        mock_create.return_value = mock_resp
+    with patch.object(type(provider.llm), "ainvoke", new_callable=AsyncMock) as mock_invoke:
+        mock_invoke.return_value = AIMessage(content='{"roles": ["Backend Engineer"]}')
 
         data = await provider.complete_json([{"role": "user", "content": "Return roles"}])
         assert data == {"roles": ["Backend Engineer"]}
@@ -92,3 +85,17 @@ async def test_ai_service_skill_gap_analysis():
     assert "AWS" in result.missing_preferred_skills
     assert "Python" in result.matched_skills
     assert len(result.learning_roadmap) == 1
+
+
+@pytest.mark.asyncio
+async def test_gemini_test_connection_parameter_mapping():
+    provider = GeminiProvider(api_key="mock-key")
+    with patch.object(type(provider.llm), "ainvoke", new_callable=AsyncMock) as mock_invoke:
+        mock_invoke.return_value = AIMessage(content="ok")
+        res = await provider.test_connection()
+        assert res["reachable"] is True
+        assert res["provider"] == "gemini"
+        call_kwargs = mock_invoke.call_args.kwargs
+        assert "max_output_tokens" in call_kwargs
+        assert call_kwargs["max_output_tokens"] == 5
+        assert "max_tokens" not in call_kwargs
