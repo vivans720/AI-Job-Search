@@ -265,6 +265,7 @@ class InternshalaAdapter(JobSource):
         q: str = ""
         include_jobs: bool = True
         include_internships: bool = True
+        freshness_hours: int = 24
 
         if isinstance(query, list):
             skills = [str(r).lower().strip() for r in query]
@@ -276,6 +277,16 @@ class InternshalaAdapter(JobSource):
             skills = [s.lower().strip() for s in (query.skills or [])]
             include_jobs = getattr(query, "include_jobs", True)
             include_internships = getattr(query, "include_internships", True)
+            freshness_hours = query.freshness_hours or 24
+
+        # For ultra-fresh windows (e.g. 1 hour), strictly constrain categories to top core paths
+        if freshness_hours <= 1:
+            fast_paths: list[str] = []
+            if include_jobs:
+                fast_paths.append("/jobs/computer-science-jobs/")
+            if include_internships:
+                fast_paths.append("/internships/software-development-internship/")
+            return fast_paths
 
         job_paths: list[str] = []
         internship_paths: list[str] = []
@@ -338,21 +349,36 @@ class InternshalaAdapter(JobSource):
         if include_internships and not internship_paths:
             internship_paths = list(DEFAULT_INTERNSHIP_PATHS)
 
+        # Apply freshness-aware category count caps
+        if freshness_hours <= 4:
+            job_paths = job_paths[:2]
+            internship_paths = internship_paths[:2]
+
         all_paths: list[str] = []
         if include_jobs:
             all_paths.extend(job_paths)
         if include_internships:
             all_paths.extend(internship_paths)
 
-        return all_paths
+        # Deduplicate preserving order
+        seen = set()
+        deduped_paths = []
+        for p in all_paths:
+            if p not in seen:
+                seen.add(p)
+                deduped_paths.append(p)
+
+        return deduped_paths
 
     async def _fetch_url(self, target_url: str, max_attempts: int = 3) -> str | None:
         """Automated text/HTTP fallback gate using resilient HTTP client with rate limiting and metrics."""
         from app.utils.http_client import resilient_fetch
 
         limiter = get_source_rate_limiter(self.source_name)
-        await limiter.acquire()
+        wait_sec = await limiter.acquire()
+        self._metrics.rate_limit_wait_ms += (wait_sec * 1000.0)
         self._metrics.requests_count += 1
+        self._metrics.search_requests_count += 1
 
         try:
             result = await resilient_fetch(
@@ -443,6 +469,7 @@ class InternshalaAdapter(JobSource):
     async def _fetch_via_browser(self, target_url: str, timeout: float | None = None) -> str | None:
         """Fetches the URL via a persisted Playwright browser session."""
         effective_timeout = timeout if timeout is not None else self.timeout
+        self._metrics.browser_fallbacks_count += 1
         try:
             async with persistent_browser_session(
                 user_data_dir=getattr(self.settings, "BROWSER_USER_DATA_DIR", None),
@@ -478,7 +505,7 @@ class InternshalaAdapter(JobSource):
             logger.warning("internshala_playwright_failed", error=str(e), url=target_url)
             return None
 
-    async def _fetch_page(self, target_url: str) -> str | None:
+    async def _fetch_page(self, target_url: str, allow_browser_fallback: bool = True) -> str | None:
         """Retrieves listing HTML using HTTP-first, Crawl4AI rendered, browser fallback.
 
         If a block/verify wall is detected in either channel, we return None
@@ -498,7 +525,11 @@ class InternshalaAdapter(JobSource):
             if self._is_likely_card_html(html) and len(html) > 500:
                 return html
 
+        if not allow_browser_fallback:
+            return None
+
         # 2) Crawl4AI rendered (primary rendered path)
+        self._metrics.browser_fallbacks_count += 1
         logger.info("internshala_crawl4ai_fetch_started", url=target_url)
         html = await self._fetch_via_crawl4ai(target_url)
         if html:
@@ -534,7 +565,21 @@ class InternshalaAdapter(JobSource):
 
         paths = self._determine_search_paths(query)
         self._freshness_hours = query.freshness_hours or 24
-        logger.info("internshala_search_started", paths=paths, max_pages=max_pages_per_category, freshness_hours=self._freshness_hours)
+
+        # Adaptive pagination depth based on freshness
+        if self._freshness_hours <= 1:
+            effective_max_pages = 1
+        elif self._freshness_hours <= 4:
+            effective_max_pages = min(max_pages_per_category, 1)
+        else:
+            effective_max_pages = max_pages_per_category
+
+        logger.info(
+            "internshala_search_started",
+            paths=paths,
+            max_pages=effective_max_pages,
+            freshness_hours=self._freshness_hours,
+        )
 
         # Reset adapter-level block state for this run
         self._blocked_state = None
@@ -546,7 +591,11 @@ class InternshalaAdapter(JobSource):
         internships_metrics: dict[str, dict[str, int]] = {}
         consecutive_failures = 0
 
+        # Global budget: max 1 browser fallback attempt per sync run
+        browser_fallback_budget = 1
+
         limit = getattr(query, "limit", 50) if isinstance(query, JobSearchQuery) else 50
+        max_target_fresh = 20 if self._freshness_hours <= 1 else max(limit, 50)
         max_jobs_quota = max(limit, 100)
         max_internships_quota = max(limit, 100)
         jobs_count = 0
@@ -554,11 +603,16 @@ class InternshalaAdapter(JobSource):
         start_time = asyncio.get_event_loop().time()
         try:
             for path in paths:
+                self._metrics.queries_count += 1
                 is_intern = path.startswith("/internships")
                 if not is_intern and jobs_count >= max_jobs_quota:
                     continue
                 if is_intern and internships_count >= max_internships_quota:
                     continue
+
+                if len(all_raw_jobs) >= max_target_fresh:
+                    logger.info("internshala_target_fresh_reached", count=len(all_raw_jobs), limit=max_target_fresh)
+                    break
 
                 cat_slug = (
                     path.strip("/")
@@ -570,14 +624,19 @@ class InternshalaAdapter(JobSource):
                 cat_discovered = 0
                 cat_fresh = 0
 
-                for page in range(1, max_pages_per_category + 1):
+                for page in range(1, effective_max_pages + 1):
+                    self._metrics.pages_count += 1
                     if page == 1:
                         target_url = urljoin(BASE_URL, path)
                     else:
                         target_url = urljoin(BASE_URL, f"{path.rstrip('/')}/page-{page}/")
 
                     logger.info("internshala_fetch_page", category=cat_slug, is_intern=is_intern, page=page, url=target_url)
-                    html = await self._fetch_page(target_url)
+                    allow_fb = browser_fallback_budget > 0
+                    html = await self._fetch_page(target_url, allow_browser_fallback=allow_fb)
+                    if not html and allow_fb:
+                        browser_fallback_budget -= 1
+
                     if not html:
                         # Fail fast on anti-bot / account-hold walls
                         if self._blocked_state in {"ACCOUNT_HOLD", "RULE_VIOLATION", "VERIFY_OR_CAPTCHA"}:
@@ -605,6 +664,7 @@ class InternshalaAdapter(JobSource):
                         break
 
                     page_fresh = 0
+                    consecutive_stale = 0
                     for r in cards:
                         # Fetch-time fast freshness filter
                         p_at, conf = None, "LOW"
@@ -620,9 +680,14 @@ class InternshalaAdapter(JobSource):
 
                         # Discard stale cards immediately: prevents downstream expensive LLM skill extraction
                         if not is_fresh:
+                            consecutive_stale += 1
                             logger.debug("internshala_fetch_stale_skipped", title=r.title, posted_raw=r.posted_time_raw, cutoff=self._freshness_hours)
+                            # Early break in strict 1h window if older listings appear
+                            if self._freshness_hours <= 1 and consecutive_stale >= 4:
+                                break
                             continue
 
+                        consecutive_stale = 0
                         page_fresh += 1
                         dedup_key = r.source_job_id or r.source_url
                         if dedup_key not in seen_job_ids:
@@ -635,8 +700,11 @@ class InternshalaAdapter(JobSource):
                             else:
                                 jobs_count += 1
 
-                    if page > 2 and page_fresh == 0:
-                        logger.info("internshala_pagination_early_stop", category=cat_slug, page=page, reason="No fresh cards after page 2")
+                    if (self._freshness_hours <= 1 and page_fresh == 0) or (page > 1 and page_fresh == 0):
+                        logger.info("internshala_pagination_early_stop", category=cat_slug, page=page, reason="No fresh cards on page")
+                        break
+
+                    if len(all_raw_jobs) >= max_target_fresh:
                         break
 
                     await asyncio.sleep(0.5)

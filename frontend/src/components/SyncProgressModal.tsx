@@ -51,35 +51,46 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
     embeddings: 0,
   });
   const [error, setError] = useState<string | null>(null);
+  const hasCompletedRef = React.useRef(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      hasCompletedRef.current = false;
+      return;
+    }
 
     if (!jobId) {
       setStatus("running");
       return;
     }
 
+    hasCompletedRef.current = false;
     let isMounted = true;
-    let pollTimer: NodeJS.Timeout;
+    let pollTimer: NodeJS.Timeout | null = null;
 
     const poll = async () => {
       try {
         const res = await fetch(`http://localhost:8000/api/v1/jobs/sync/status/${jobId}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (isMounted) pollTimer = setTimeout(poll, 2000);
+          return;
+        }
 
         const data = await res.json();
         if (!isMounted) return;
 
-        setStatus(data.status || "running");
+        const currentStatus = data.status || "running";
+        setStatus(currentStatus);
 
         // Progress tracker from worker
         if (data.progress) {
           setSourcesProgress((prev) => ({ ...prev, ...data.progress }));
         }
 
-        // Final result stats if completed
-        if (data.status === "completed") {
+        const isTerminal = ["completed", "failed", "blocked", "partial_success"].includes(currentStatus);
+
+        // Final result stats if completed or partial_success
+        if (currentStatus === "completed" || currentStatus === "partial_success") {
           const resStats = data.result || {};
           const sMap = resStats.sources || {};
 
@@ -113,10 +124,17 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
             embeddings: resStats.embeddings_generated || 0,
           });
 
-          if (onSyncComplete) onSyncComplete();
+          if (!hasCompletedRef.current) {
+            hasCompletedRef.current = true;
+            if (onSyncComplete) onSyncComplete();
+          }
           return;
-        } else if (data.status === "failed") {
-          setError(data.error || "Ingestion pipeline encountered an error.");
+        } else if (currentStatus === "failed" || currentStatus === "blocked") {
+          setError(data.error || (currentStatus === "blocked" ? "Sync blocked by source perimeter." : "Ingestion pipeline encountered an error."));
+          if (!hasCompletedRef.current) {
+            hasCompletedRef.current = true;
+            if (onSyncComplete) onSyncComplete();
+          }
           return;
         }
 
@@ -149,7 +167,9 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
           });
         }
 
-        pollTimer = setTimeout(poll, 1200);
+        if (!isTerminal && isMounted) {
+          pollTimer = setTimeout(poll, 1200);
+        }
       } catch {
         if (!isMounted) return;
         pollTimer = setTimeout(poll, 2000);
@@ -160,7 +180,7 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
 
     return () => {
       isMounted = false;
-      clearTimeout(pollTimer);
+      if (pollTimer) clearTimeout(pollTimer);
     };
   }, [isOpen, jobId, onSyncComplete]);
 

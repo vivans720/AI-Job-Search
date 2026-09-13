@@ -1,7 +1,13 @@
 .venv
+venv
 __pycache__
 *.pyc
 .pytest_cache
+.coverage
+htmlcov
+tests
 data/*.jsonl
 data/*.db
 .DS_Store
+*.log
+.git

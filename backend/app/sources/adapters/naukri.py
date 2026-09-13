@@ -214,6 +214,16 @@ class NaukriAdapter(JobSource):
         """
         Translates a JobSearchQuery into targeted skill search terms with alias expansion.
         """
+        freshness_hours = query.freshness_hours or 24
+
+        # For ultra-fresh windows (e.g. 1h), aggressively limit to top 2 core queries without alias fan-out
+        if freshness_hours <= 1:
+            if query.query and query.query.strip():
+                return [query.query.strip()]
+            if query.roles:
+                return query.roles[:2]
+            return CORE_TECH_ROLES[:2]
+
         search_terms: list[str] = []
         if query.query and query.query.strip():
             search_terms.append(query.query.strip())
@@ -239,7 +249,19 @@ class NaukriAdapter(JobSource):
             elif clean_s and clean_s not in search_terms:
                 search_terms.append(clean_s)
 
-        return search_terms if search_terms else list(DEFAULT_TARGETED_SKILLS)
+        final_terms = search_terms if search_terms else list(DEFAULT_TARGETED_SKILLS)
+        # For <= 4h, cap total query terms to 4
+        if freshness_hours <= 4:
+            final_terms = final_terms[:4]
+
+        # Deduplicate preserving order
+        seen = set()
+        deduped = []
+        for t in final_terms:
+            if t not in seen:
+                seen.add(t)
+                deduped.append(t)
+        return deduped
 
     async def _fetch_url(self, target_url: str, headers: dict[str, str] | None = None) -> tuple[int, str]:
         """
@@ -249,18 +271,23 @@ class NaukriAdapter(JobSource):
         from app.utils.http_client import resilient_fetch
 
         limiter = get_source_rate_limiter(self.source_name)
-        await limiter.acquire()
+        wait_sec = await limiter.acquire()
+        self._metrics.rate_limit_wait_ms += (wait_sec * 1000.0)
         self._metrics.requests_count += 1
+        self._metrics.search_requests_count += 1
+
+        req_headers = headers or HEADERS
 
         try:
             result = await resilient_fetch(
                 target_url,
-                headers=headers or HEADERS,
+                headers=req_headers,
                 timeout=self.timeout,
                 max_retries=self.max_retries,
                 caller_tag="naukri_adapter",
             )
             self._metrics.retries_count += getattr(result, "retry_count", 0)
+
             if result.status_code in (403, 429) or result.is_blocked:
                 self.status = "blocked"
                 self.last_error = f"HTTP {result.status_code} - blocked by Naukri perimeter"
@@ -268,11 +295,14 @@ class NaukriAdapter(JobSource):
                 self._metrics.status = "blocked"
                 self._metrics.last_error = self.last_error
                 self._metrics.last_error_category = self.last_error_category
+                return result.status_code, result.text or ""
             elif result.is_success:
                 self.status = "ok"
                 self._metrics.status = "ok"
+                return result.status_code, result.text or ""
 
-            return result.status_code, result.text
+            return result.status_code, result.text or ""
+
         except Exception as exc:
             classified = classify_error(exc, self.source_name)
             self.last_error = classified.message
@@ -368,24 +398,24 @@ class NaukriAdapter(JobSource):
             posted_time_raw = footer_label
             if not posted_time_raw and created_date is not None:
                 try:
-                    # createdDate is typically epoch millis (int/float). Handle numeric strings too.
-                    if isinstance(created_date, str) and created_date.strip().replace('.', '', 1).isdigit():
-                        created_date = float(created_date.strip())
-                    posted_time_raw = datetime.fromtimestamp(float(created_date) / 1000, tz=timezone.utc).isoformat()
+                    c_float = float(str(created_date).strip())
+                    if c_float > 0:
+                        p_dt = datetime.fromtimestamp(c_float / 1000, tz=timezone.utc)
+                        posted_time_raw = p_dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
-                    posted_time_raw = None
+                    pass
 
-            raw_payload = dict(job)
-            raw_payload["source_job_id"] = job_id or extract_naukri_job_id(app_url)
-
-            # Strict validation
-            if not title or not company:
-                continue
+            tags = job.get("tagsAndSkills")
+            skills_list: list[str] = []
+            if isinstance(tags, list):
+                skills_list = [str(t) for t in tags]
+            elif isinstance(tags, str):
+                skills_list = [s.strip() for s in tags.split(",") if s.strip()]
 
             results.append(
                 RawJob(
                     source=self.source_name,
-                    source_job_id=str(job_id or extract_naukri_job_id(app_url)),
+                    source_job_id=job_id,
                     title=title,
                     company_name=company,
                     description=desc,
@@ -397,7 +427,11 @@ class NaukriAdapter(JobSource):
                     posted_time_raw=posted_time_raw,
                     source_url=app_url,
                     application_url=app_url,
-                    raw_payload=raw_payload,
+                    raw_payload={
+                        "skills": skills_list,
+                        "createdDate": created_date,
+                        "jobDetails": job,
+                    },
                 )
             )
 
@@ -405,38 +439,24 @@ class NaukriAdapter(JobSource):
 
     def parse_html(self, html: str) -> list[RawJob]:
         """
-        Extracts RawJob objects from Naukri HTML listings.
-        Checks for high-fidelity embedded __NEXT_DATA__ script tag first,
-        then falls back to DOM CSS selectors (div.srp-jobtuple-wrapper, etc.).
+        Parses raw HTML search page into RawJob records.
         """
-        # 1. High-fidelity static data layer extraction
+        if not html:
+            return []
+
         next_data_jobs = self._extract_next_data_payload(html)
         if next_data_jobs:
             return next_data_jobs
 
-        # 2. DOM CSS Selector fallback
         soup = BeautifulSoup(html, "html.parser")
-        cards = []
-        best_cards: list[Any] = []
+
+        def _is_usable_card(c: Any) -> bool:
+            title_match = any(c.select_one(sel) for sel in NAUKRI_HTML_SELECTORS["title"])
+            company_match = any(c.select_one(sel) for sel in NAUKRI_HTML_SELECTORS["company"])
+            return bool(title_match and company_match)
+
+        best_cards = []
         best_usable = 0
-
-        def _is_usable_card(card_el: Any) -> bool:
-            # Pick the first title selector match without relying on outer helpers.
-            title_el = None
-            for sel in NAUKRI_HTML_SELECTORS["title"]:
-                match = card_el.select_one(sel)
-                if match:
-                    title_el = match
-                    break
-
-            if not title_el:
-                return False
-
-            raw_title = title_el.get_text(strip=True)
-            href = title_el.get("href")
-            return bool(raw_title and href)
-
-        # Evaluate each selector variant and pick the best yield.
         for card_sel in NAUKRI_HTML_SELECTORS["card"]:
             found = soup.select(card_sel)
             if not found:
@@ -447,7 +467,6 @@ class NaukriAdapter(JobSource):
                 best_cards = found
 
         cards = best_cards
-
         if not cards:
             return []
 
@@ -519,19 +538,13 @@ class NaukriAdapter(JobSource):
             for skill_sel in NAUKRI_HTML_SELECTORS["skills"]:
                 items = card.select(skill_sel)
                 if items:
-                    skills_list = [s.get_text(strip=True) for s in items if s.get_text(strip=True)]
-                    break
+                    for it in items:
+                        txt = it.get_text(strip=True)
+                        if txt and txt not in skills_list:
+                            skills_list.append(txt)
 
             raw_payload = {
-                "naukri_id": job_id,
-                "title": title,
-                "company": company,
-                "location": location,
-                "salary": salary_raw,
-                "experience": exp_raw,
-                "posted_time": posted_time_raw,
                 "skills": skills_list,
-                "url": app_url,
             }
 
             results.append(
@@ -562,12 +575,31 @@ class NaukriAdapter(JobSource):
         """
         queries = self._determine_search_queries(query)
         self._freshness_hours = query.freshness_hours or 24
-        logger.info("naukri_search_started", queries=queries, limit=query.limit, freshness_hours=self._freshness_hours)
+
+        # Adaptive pagination depth based on freshness
+        if self._freshness_hours <= 1:
+            max_pages = 1
+        elif self._freshness_hours <= 4:
+            max_pages = 2
+        else:
+            max_pages = 3
+
+        logger.info(
+            "naukri_search_started",
+            queries=queries,
+            limit=query.limit,
+            max_pages=max_pages,
+            freshness_hours=self._freshness_hours,
+        )
 
         all_raw_jobs: list[RawJob] = []
         seen_job_ids: set[str] = set()
 
-        max_pages = 3
+        # Global budget: max 1 browser fallback attempt per sync run
+        browser_fallback_budget = 1
+        limit = getattr(query, "limit", 50) if isinstance(query, JobSearchQuery) else 50
+        max_target_fresh = 20 if self._freshness_hours <= 1 else max(limit, 50)
+
         # For early-career searches (experience_max <= 2), avoid forcing &experience=0
         # which blinds Naukri search to only postings explicitly tagged "Fresher"
         if query.experience_max is not None and query.experience_max > 2:
@@ -580,7 +612,13 @@ class NaukriAdapter(JobSource):
         start_time = asyncio.get_event_loop().time()
         try:
             for term in queries:
+                self._metrics.queries_count += 1
+                if len(all_raw_jobs) >= max_target_fresh:
+                    logger.info("naukri_target_fresh_reached", count=len(all_raw_jobs), limit=max_target_fresh)
+                    break
+
                 for page_no in range(1, max_pages + 1):
+                    self._metrics.pages_count += 1
                     # 1. Primary path: Naukri Mobile/Gateway API (fast JSON response)
                     api_url = (
                         f"{BASE_URL}/jobapi/v3/search?noOfResults=20&urlType=search_by_keyword"
@@ -612,7 +650,9 @@ class NaukriAdapter(JobSource):
                             parsed = self.parse_html(p_text)
 
                         # If static HTML returned unhydrated Next.js shell, hydrate via shared Crawl4AI provider
-                        if not parsed:
+                        if not parsed and browser_fallback_budget > 0:
+                            browser_fallback_budget -= 1
+                            self._metrics.browser_fallbacks_count += 1
                             logger.info("naukri_crawl4ai_fallback_activated", url=page_url, reason="static_html_unhydrated")
                             browser_html = await self._fetch_via_crawl4ai(page_url)
                             if browser_html:
@@ -624,7 +664,9 @@ class NaukriAdapter(JobSource):
                         if p_status == 200 and p_text:
                             parsed = self.parse_html(p_text)
 
-                        if not parsed:
+                        if not parsed and browser_fallback_budget > 0:
+                            browser_fallback_budget -= 1
+                            self._metrics.browser_fallbacks_count += 1
                             logger.info("naukri_crawl4ai_fallback_activated", url=page_url, page=page_no, reason="static_html_unhydrated")
                             browser_html = await self._fetch_via_crawl4ai(page_url)
                             if browser_html:
@@ -635,6 +677,7 @@ class NaukriAdapter(JobSource):
 
                     new_on_page = 0
                     page_fresh = 0
+                    consecutive_stale = 0
                     for r in parsed:
                         # Fetch-time fast freshness filter
                         p_at = None
@@ -654,9 +697,13 @@ class NaukriAdapter(JobSource):
 
                         ref_now = r.scraped_at or datetime.now(timezone.utc)
                         if p_at and not self.freshness_service.is_fresh(p_at, conf, freshness_hours=self._freshness_hours, reference_now=ref_now):
+                            consecutive_stale += 1
                             logger.debug("naukri_fetch_stale_skipped", title=r.title, posted_raw=r.posted_time_raw, cutoff=self._freshness_hours)
+                            if self._freshness_hours <= 1 and consecutive_stale >= 4:
+                                break
                             continue
 
+                        consecutive_stale = 0
                         page_fresh += 1
                         dedup_key = r.source_job_id or r.source_url
                         if dedup_key not in seen_job_ids:
@@ -664,7 +711,10 @@ class NaukriAdapter(JobSource):
                             all_raw_jobs.append(r)
                             new_on_page += 1
 
-                    if new_on_page == 0 or (page_no > 1 and page_fresh == 0):
+                    if new_on_page == 0 or (self._freshness_hours <= 1 and page_fresh == 0) or (page_no > 1 and page_fresh == 0):
+                        break
+
+                    if len(all_raw_jobs) >= max_target_fresh:
                         break
 
                     # Polite delay between page requests

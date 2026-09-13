@@ -182,58 +182,8 @@ export default function JobsPage() {
         setSyncJobId(initialData.job_id);
         setSyncNotification({
           type: "success",
-          message: `Sync job enqueued (${initialData.source || src}). Waiting for background worker...`,
+          message: `Sync job enqueued (${initialData.source || src}). Background sync running...`,
         });
-
-        // Poll for completion
-        const jobId = initialData.job_id;
-        let attempts = 0;
-        const maxAttempts = 60; // 60 * 1.5s = 90s
-        const pollInterval = setInterval(async () => {
-          attempts += 1;
-          try {
-            const pollRes = await fetch(`http://localhost:8000/api/v1/jobs/sync/status/${jobId}`);
-            if (pollRes.ok) {
-              const statusData = await pollRes.json();
-              if (statusData.status === "completed") {
-                clearInterval(pollInterval);
-                setSyncing(false);
-                const stats = statusData.result || {};
-                const saved = stats.canonical_saved || 0;
-                const refreshed = stats.updated_existing || 0;
-                const srcNames = stats.sources_synced?.join(", ") || src;
-                setSyncNotification({
-                  type: "success",
-                  message: `Worker sync complete (${srcNames}): ${stats.total_discovered || 0} scanned, ${stats.fresh_jobs || 0} fresh, ${saved} new saved, ${refreshed} refreshed.`,
-                });
-                await fetchJobs(1);
-              } else if (statusData.status === "failed") {
-                clearInterval(pollInterval);
-                setSyncing(false);
-                setSyncNotification({
-                  type: "error",
-                  message: `Background worker sync failed: ${statusData.error || "Unknown error"}`,
-                });
-              } else {
-                setSyncNotification({
-                  type: "success",
-                  message: `Worker state: ${statusData.status}... (${attempts * 1.5}s)`,
-                });
-              }
-            }
-          } catch {
-            // keep polling
-          }
-
-          if (attempts >= maxAttempts) {
-            clearInterval(pollInterval);
-            setSyncing(false);
-            setSyncNotification({
-              type: "error",
-              message: "Sync job polling timed out. Worker may still be running in background.",
-            });
-          }
-        }, 1500);
       } else {
         // Synchronous fallback response
         const result = initialData;
@@ -242,7 +192,7 @@ export default function JobsPage() {
         const srcNames = result.sources_synced?.join(", ") || src;
         setSyncNotification({
           type: "success",
-          message: `Sync complete (${srcNames}): ${result.total_discovered} scanned, ${result.fresh_jobs} fresh, ${saved} new saved, ${refreshed} refreshed.`,
+          message: `Sync complete (${srcNames}): ${result.total_discovered || 0} scanned, ${result.fresh_jobs || 0} fresh, ${saved} new saved, ${refreshed} refreshed.`,
         });
         await fetchJobs(1);
         setSyncing(false);
