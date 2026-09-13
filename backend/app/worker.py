@@ -130,6 +130,7 @@ async def process_sync_source_job(job, task_queue):
                     src_status = "failed"
                 src_err = str(e)
 
+            metrics_data = stats.get("metrics", {})
             report = {
                 "status": src_status,
                 "discovered": stats.get("total_discovered", 0),
@@ -139,6 +140,12 @@ async def process_sync_source_job(job, task_queue):
                 "skills": stats.get("ai_extracted_skills", 0) + stats.get("normalized_skills", 0),
                 "embeddings": stats.get("embeddings_generated", 0),
                 "matches": stats.get("matches_evaluated", 0),
+                "queries": metrics_data.get("queries_count", 0),
+                "pages": metrics_data.get("pages_count", 0),
+                "hydrations": metrics_data.get("hydration_requests_count", 0),
+                "rate_limit_wait_ms": metrics_data.get("rate_limit_wait_ms", 0.0),
+                "persistence_duration_ms": stats.get("persistence_duration_ms", 0.0),
+                "match_duration_ms": stats.get("match_duration_ms", 0.0),
             }
             if src_err:
                 report["error"] = src_err
@@ -155,6 +162,9 @@ async def process_sync_source_job(job, task_queue):
                 "rejected": stats.get("filtered_by_freshness", 0) + stats.get("filtered_by_validation", 0),
                 "skills": stats.get("ai_extracted_skills", 0) + stats.get("normalized_skills", 0),
                 "embeddings": stats.get("embeddings_generated", 0),
+                "queries": metrics_data.get("queries_count", 0),
+                "pages": metrics_data.get("pages_count", 0),
+                "rate_limit_wait_ms": metrics_data.get("rate_limit_wait_ms", 0.0),
             }
             await task_queue.set_job_status(job.id, "running", task_type=job.task_type, progress=progress_tracker)
 

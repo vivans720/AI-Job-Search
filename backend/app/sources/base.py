@@ -83,6 +83,15 @@ class SourceCrawlMetrics(BaseModel):
     status: str = "ok"  # ok, degraded, blocked, failed
     last_error_category: str | None = None
     last_error: str | None = None
+    # Granular latency & crawl telemetry
+    queries_count: int = 0
+    pages_count: int = 0
+    search_requests_count: int = 0
+    hydration_requests_count: int = 0
+    browser_fallbacks_count: int = 0
+    rate_limit_wait_ms: float = 0.0
+    discovery_duration_ms: float = 0.0
+    hydration_duration_ms: float = 0.0
 
 
 class JobSource(ABC):

@@ -1,7 +1,11 @@
 from abc import ABC, abstractmethod
 from typing import Sequence
 import structlog
-from fastembed import TextEmbedding
+
+try:
+    from fastembed import TextEmbedding
+except ImportError:
+    TextEmbedding = None
 
 from app.config import settings
 
@@ -28,7 +32,7 @@ class BGEEmbeddingProvider(EmbeddingProvider):
 
     def __init__(self, model_name: str | None = None):
         self.model_name = model_name or settings.EMBEDDING_MODEL
-        if BGEEmbeddingProvider._model is None:
+        if BGEEmbeddingProvider._model is None and TextEmbedding is not None:
             logger.info("loading_embedding_model", model=self.model_name)
             BGEEmbeddingProvider._model = TextEmbedding(model_name=self.model_name)
             logger.info("embedding_model_loaded", model=self.model_name)
@@ -36,7 +40,7 @@ class BGEEmbeddingProvider(EmbeddingProvider):
 
     def embed(self, text: str) -> list[float]:
         cleaned = text.strip()
-        if not cleaned:
+        if not cleaned or not self.model:
             return [0.0] * settings.EMBEDDING_DIMENSIONS
         embeddings = list(self.model.embed([cleaned]))
         return [float(x) for x in embeddings[0]]
@@ -45,6 +49,8 @@ class BGEEmbeddingProvider(EmbeddingProvider):
         cleaned = [t.strip() for t in texts]
         if not cleaned:
             return []
+        if not self.model:
+            return [[0.0] * settings.EMBEDDING_DIMENSIONS for _ in cleaned]
         embeddings = list(self.model.embed(cleaned))
         return [[float(x) for x in vector] for vector in embeddings]
 

@@ -216,36 +216,79 @@ class LinkedInAdapter(JobSource):
             return False
 
     def _determine_search_queries(self, query: JobSearchQuery) -> list[str]:
-        """Translates search query into targeted skill and broad role terms with alias expansion."""
+        """
+        Translates search query into targeted terms with freshness-aware query budgeting.
+        Prevents excessive query explosion and eliminates duplicate synonyms.
+        """
         search_terms: list[str] = []
+        freshness_h = query.freshness_hours or 24
+
+        # 1. Explicit query override takes highest priority
         if query.query and query.query.strip():
             search_terms.append(query.query.strip())
 
-        # Include core tech roles so generic titles with skills in description are discovered
-        # only if query.query is not a specific override
+        # 2. Roles budgeting
+        roles_to_include: list[str] = []
         if not query.query:
             roles_to_include = query.roles if query.roles else CORE_TECH_ROLES
-            for r in roles_to_include:
-                clean_r = r.strip()
-                if clean_r and clean_r not in search_terms:
-                    search_terms.append(clean_r)
         elif query.roles:
-            for r in query.roles:
-                clean_r = r.strip()
-                if clean_r and clean_r not in search_terms:
-                    search_terms.append(clean_r)
+            roles_to_include = query.roles
 
-        raw_skills = query.skills if query.skills else []
-        for s in raw_skills:
-            clean_s = s.lower().strip()
-            if clean_s in SKILL_EXPANSIONS:
-                for variant in SKILL_EXPANSIONS[clean_s]:
-                    if variant not in search_terms:
-                        search_terms.append(variant)
-            elif clean_s and clean_s not in search_terms:
-                search_terms.append(clean_s)
+        # For tight windows (<= 1h), focus strictly on primary core roles
+        if freshness_h <= 1 and roles_to_include:
+            roles_to_include = roles_to_include[:2]
+        elif freshness_h <= 4 and len(roles_to_include) > 3:
+            roles_to_include = roles_to_include[:3]
 
-        return search_terms if search_terms else list(DEFAULT_TARGETED_SKILLS)
+        for r in roles_to_include:
+            clean_r = r.strip()
+            if clean_r and clean_r.lower() not in [s.lower() for s in search_terms]:
+                search_terms.append(clean_r)
+
+        # 3. Skills budgeting: For very short windows (<= 1h), do not fan out into 10+ skill variants.
+        # Broader queries like 'Software Engineer' already match these descriptions via f_TPR.
+        if freshness_h > 1:
+            raw_skills = query.skills if query.skills else []
+            # In medium windows (<= 4h), cap raw skills
+            if freshness_h <= 4 and len(raw_skills) > 3:
+                raw_skills = raw_skills[:3]
+
+            for s in raw_skills:
+                clean_s = s.lower().strip()
+                if not clean_s:
+                    continue
+                # For <= 8h, pick only primary canonical skill, avoid adding multiple synonyms
+                if freshness_h <= 8 and clean_s in SKILL_EXPANSIONS:
+                    primary_variant = SKILL_EXPANSIONS[clean_s][0]
+                    if primary_variant.lower() not in [st.lower() for st in search_terms]:
+                        search_terms.append(primary_variant)
+                elif clean_s in SKILL_EXPANSIONS:
+                    for variant in SKILL_EXPANSIONS[clean_s]:
+                        if variant.lower() not in [st.lower() for st in search_terms]:
+                            search_terms.append(variant)
+                elif clean_s not in [st.lower() for st in search_terms]:
+                    search_terms.append(clean_s)
+
+        # 4. Canonical deduplication preserving insertion order
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for term in search_terms:
+            canonical_key = re.sub(r"[^a-z0-9]", "", term.lower())
+            if canonical_key and canonical_key not in seen:
+                seen.add(canonical_key)
+                deduped.append(term)
+
+        if not deduped:
+            deduped = list(DEFAULT_TARGETED_SKILLS[:2] if freshness_h <= 1 else DEFAULT_TARGETED_SKILLS)
+
+        # Hard cap queries based on freshness window
+        if freshness_h <= 1:
+            return deduped[:2]
+        elif freshness_h <= 4:
+            return deduped[:4]
+        elif freshness_h <= 8:
+            return deduped[:6]
+        return deduped[:10]
 
     async def _fetch_url(self, target_url: str) -> str | None:
         """
@@ -260,7 +303,8 @@ class LinkedInAdapter(JobSource):
         )
 
         limiter = get_source_rate_limiter(self.source_name)
-        await limiter.acquire()
+        wait_sec = await limiter.acquire()
+        self._metrics.rate_limit_wait_ms += (wait_sec * 1000.0)
         self._metrics.requests_count += 1
 
         try:
@@ -272,7 +316,7 @@ class LinkedInAdapter(JobSource):
                 caller_tag="linkedin_adapter",
                 enable_tor_fallback=True,
             )
-            self._metrics.retries_count += getattr(result, "retry_count", 0)
+            self._metrics.retries_count += getattr(result, "attempt_count", 1) - 1
         except Exception as exc:
             classified = classify_error(exc, self.source_name)
             self.last_error = classified.message
@@ -552,30 +596,66 @@ class LinkedInAdapter(JobSource):
     async def search(self, query: JobSearchQuery) -> list[RawJob]:
         """
         Triple Discovery search across targeted queries:
-        1. Fast Path: Guest API endpoint (seeMoreJobPostings/search) with f_TPR=r86400 (24h).
+        1. Fast Path: Guest API endpoint (seeMoreJobPostings/search) with f_TPR.
         2. Rendered Path: Shared Crawl4AI provider via CrawlerProvider boundary.
         3. Fallback Path: Headless Playwright persistent browser with stealth camo.
+        
+        Optimized with:
+        - Freshness-aware query and page offsets (1h uses 1 page, 24h uses up to 3 pages).
+        - Global per-sync hydration budget (replaces aggressive per-query hydration).
+        - Browser fallback attempt budget and circuit breaker.
+        - Early stopping on empty pages or when target limit reached.
+        - Granular crawl and timing telemetry.
         """
         queries = self._determine_search_queries(query)
         location = query.locations[0] if query.locations else "India"
         limit = query.limit or 50
-        self._freshness_hours = query.freshness_hours or 24
+        freshness_h = query.freshness_hours or 24
+        self._freshness_hours = freshness_h
 
-        logger.info("linkedin_search_started", queries=queries, location=location, limit=limit)
+        logger.info("linkedin_search_started", queries=queries, location=location, limit=limit, freshness_hours=freshness_h)
         all_raw_jobs: list[RawJob] = []
         seen_job_ids: set[str] = set()
 
         # LinkedIn f_TPR param: r{seconds} filters server-side by posting age
-        f_tpr_seconds = (query.freshness_hours or 24) * 3600
+        f_tpr_seconds = freshness_h * 3600
         f_tpr = f"r{f_tpr_seconds}"
 
-        offsets = [0, 25, 50]
+        # Freshness-aware pagination offsets
+        if freshness_h <= 1:
+            offsets = [0]
+        elif freshness_h <= 4:
+            offsets = [0, 25]
+        else:
+            offsets = [0, 25, 50]
+
+        # Global per-sync hydration budget
+        if freshness_h <= 1:
+            global_hydration_budget = 0  # 1h: skip sync detail hydration; rely on card text + async enrichment
+        elif freshness_h <= 4:
+            global_hydration_budget = 3
+        else:
+            global_hydration_budget = 10
+
+        global_hydrated_count = 0
         consecutive_failures = 0
         max_consecutive_failures = 2
 
+        # Browser fallback budgets per sync
+        max_browser_fallbacks = 1 if freshness_h <= 4 else 2
+        browser_fallback_attempts = 0
+        browser_fallback_disabled = False
+
+        self._metrics.queries_count = len(queries)
         start_time = asyncio.get_event_loop().time()
+        discovery_t0 = start_time
+
         try:
             for role in queries:
+                if len(all_raw_jobs) >= limit:
+                    logger.info("linkedin_search_limit_reached_early_exit", count=len(all_raw_jobs), limit=limit)
+                    break
+
                 if consecutive_failures >= max_consecutive_failures:
                     logger.warning(
                         "linkedin_search_circuit_breaker_triggered",
@@ -590,20 +670,31 @@ class LinkedInAdapter(JobSource):
                 role_discovered = 0
 
                 for start_offset in offsets:
+                    if len(all_raw_jobs) >= limit:
+                        break
+
                     # Primary Fast Path
                     guest_api_url = (
                         f"{GUEST_SEARCH_URL}?keywords={role_slug}&location={loc_slug}&f_TPR={f_tpr}&start={start_offset}"
                     )
+                    self._metrics.pages_count += 1
+                    self._metrics.search_requests_count += 1
                     html = await self._fetch_url(guest_api_url)
 
                     parsed: list[RawJob] = []
                     if html:
                         parsed = self.parse_html(html)
 
-                    # Rendered paths (only on first page if guest API fails):
-                    # Crawl4AI shared provider first, legacy Playwright fallback second.
-                    if not parsed and start_offset == 0:
+                    # Rendered paths (only on first page if guest API fails and fallback budget available)
+                    if (
+                        not parsed
+                        and start_offset == 0
+                        and not browser_fallback_disabled
+                        and browser_fallback_attempts < max_browser_fallbacks
+                    ):
                         logger.info("linkedin_guest_api_miss_triggering_browser_fallback", role=role)
+                        browser_fallback_attempts += 1
+                        self._metrics.browser_fallbacks_count += 1
                         public_search_url = (
                             f"{PUBLIC_SEARCH_URL}?keywords={role_slug}&location={loc_slug}&f_TPR={f_tpr}"
                         )
@@ -612,18 +703,24 @@ class LinkedInAdapter(JobSource):
                             rendered_html = await self._fetch_via_browser(public_search_url)
                         if rendered_html:
                             parsed = self.parse_html(rendered_html)
+                        else:
+                            logger.warning("linkedin_browser_fallback_failed_disabling_for_sync", role=role)
+                            browser_fallback_disabled = True
 
                     if not parsed:
+                        # Empty page: stop paginating this query immediately
                         break
 
-                    hydrate_count = 0
                     new_on_page = 0
                     for job in parsed:
+                        if len(all_raw_jobs) >= limit:
+                            break
+
                         dedup_id = job.source_job_id or job.source_url
                         if dedup_id in seen_job_ids:
                             continue
 
-                        # Fetch-time fast freshness check: drop stale jobs before detail hydration and LLM extraction
+                        # Fetch-time fast freshness check: drop stale jobs before detail hydration
                         ref_time = job.scraped_at or datetime.now(timezone.utc)
                         dt_attr = (job.raw_payload or {}).get("datetime")
                         p_at, conf = None, "LOW"
@@ -639,13 +736,21 @@ class LinkedInAdapter(JobSource):
                         seen_job_ids.add(dedup_id)
                         new_on_page += 1
 
-                        # Attempt detail hydration for fresh cards with short snippet descriptions (up to 20 per search query)
-                        if (not job.description or len(job.description.strip()) < 200) and job.source_url and hydrate_count < 20:
+                        # Global per-sync detail hydration budget
+                        if (
+                            (not job.description or len(job.description.strip()) < 200)
+                            and job.source_url
+                            and global_hydrated_count < global_hydration_budget
+                        ):
+                            hyd_t0 = asyncio.get_event_loop().time()
                             try:
+                                self._metrics.hydration_requests_count += 1
                                 hydrated = await self.get_job(job.source_url, use_browser=False)
+                                hyd_duration = (asyncio.get_event_loop().time() - hyd_t0) * 1000.0
+                                self._metrics.hydration_duration_ms += hyd_duration
                                 if hydrated and len(hydrated.description or "") > len(job.description or ""):
                                     all_raw_jobs.append(hydrated)
-                                    hydrate_count += 1
+                                    global_hydrated_count += 1
                                     role_discovered += 1
                                     continue
                             except Exception as e:
@@ -657,23 +762,34 @@ class LinkedInAdapter(JobSource):
                     if new_on_page == 0:
                         break
 
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.1)
 
                 if role_discovered > 0:
                     consecutive_failures = 0
                 else:
                     consecutive_failures += 1
 
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.1)
         finally:
-            elapsed_ms = (asyncio.get_event_loop().time() - start_time) * 1000.0
+            now_t = asyncio.get_event_loop().time()
+            elapsed_ms = (now_t - start_time) * 1000.0
             self._metrics.duration_ms += elapsed_ms
+            self._metrics.discovery_duration_ms += (now_t - discovery_t0) * 1000.0
             self._metrics.raw_discovered = len(all_raw_jobs)
 
-        logger.info("linkedin_search_completed", total_discovered=len(all_raw_jobs))
+        logger.info(
+            "linkedin_search_completed",
+            total_discovered=len(all_raw_jobs),
+            queries_count=len(queries),
+            pages_count=self._metrics.pages_count,
+            requests_count=self._metrics.requests_count,
+            hydrations=global_hydrated_count,
+            rate_limit_wait_ms=self._metrics.rate_limit_wait_ms,
+            duration_ms=self._metrics.duration_ms,
+        )
         return all_raw_jobs
 
-    async def get_job(self, url: str, use_browser: bool = True) -> RawJob | None:
+    async def get_job(self, url: str, use_browser: bool = False) -> RawJob | None:
         """Fetches a specific LinkedIn job posting by URL."""
         try:
             html = await self._fetch_url(url)

@@ -237,6 +237,7 @@ class JobIngestionService:
             logger.info("job_deduplicated", source=source.source_name, count=deduplicated_count)
 
         # 8. Database Persistence with Savepoints (begin_nested)
+        persistence_t0 = time.perf_counter()
         saved_count = 0
         updated_count = 0
         persisted_job_entities: list[Job] = []
@@ -344,6 +345,7 @@ class JobIngestionService:
                 continue
 
         await db.commit()
+        persistence_duration_ms = (time.perf_counter() - persistence_t0) * 1000.0
         
         # Record persisted jobs metric & log
         metrics.inc("jobs_accepted_total", saved_count, source=source.source_name)
@@ -352,9 +354,11 @@ class JobIngestionService:
             source=source.source_name,
             saved=saved_count,
             updated=updated_count,
+            duration_ms=round(persistence_duration_ms, 2),
         )
 
         # 9. Phase 43: Candidate Matching Stage
+        match_t0 = time.perf_counter()
         matches_evaluated_count = 0
         try:
             user_stmt = select(User).limit(1)
@@ -384,6 +388,7 @@ class JobIngestionService:
         except Exception as match_stage_err:
             logger.warning("matching_stage_post_ingest_failed", error=str(match_stage_err))
 
+        match_duration_ms = (time.perf_counter() - match_t0) * 1000.0
         duration_sec = time.perf_counter() - t0
         metrics.observe("sync_duration_seconds", duration_sec, source=source.source_name)
         logger.info("sync_completed", source=source.source_name, duration_sec=round(duration_sec, 2))
@@ -413,6 +418,8 @@ class JobIngestionService:
             "normalized_skills": skills_normalized_count,
             "embeddings_generated": len(embeddings),
             "matches_evaluated": matches_evaluated_count,
+            "persistence_duration_ms": round(persistence_duration_ms, 2),
+            "match_duration_ms": round(match_duration_ms, 2),
             "duplicates_log": audit_log,
         }
         log_sync_event(stats)

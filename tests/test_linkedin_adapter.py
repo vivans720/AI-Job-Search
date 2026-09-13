@@ -570,7 +570,166 @@ async def test_linkedin_offset_pagination():
         return ""
 
     with patch.object(adapter, "_fetch_url", side_effect=mock_fetch):
-        jobs = await adapter.search(JobSearchQuery(roles=["Software Engineer"], limit=100))
+        jobs = await adapter.search(JobSearchQuery(roles=["Software Engineer"], limit=100, freshness_hours=24))
         assert any("start=0" in u for u in urls_called)
         assert any("start=25" in u for u in urls_called)
         assert len(jobs) == 2
+
+
+@pytest.mark.asyncio
+async def test_freshness_aware_query_budgeting_and_deduplication():
+    """Verifies that 1h freshness window constrains queries and eliminates duplicate synonyms."""
+    adapter = LinkedInAdapter()
+    
+    # 1h query with multiple overlapping skills and roles
+    q_1h = JobSearchQuery(
+        roles=["Software Engineer", "Backend Developer", "Frontend Developer", "Full Stack Developer"],
+        skills=["javascript", "js", "typescript", "react", "reactjs", "python"],
+        freshness_hours=1,
+    )
+    queries_1h = adapter._determine_search_queries(q_1h)
+    # Must be capped to at most 2 queries for 1h sync
+    assert len(queries_1h) <= 2
+    assert len(queries_1h) == len(set(queries_1h))
+
+    # 24h query gets broader coverage but canonical deduplication
+    q_24h = JobSearchQuery(
+        roles=["Software Engineer"],
+        skills=["javascript", "js", "typescript", "ts"],
+        freshness_hours=24,
+    )
+    queries_24h = adapter._determine_search_queries(q_24h)
+    assert len(queries_24h) > len(queries_1h)
+    # Check no literal duplicates
+    assert len(queries_24h) == len(set(queries_24h))
+
+
+@pytest.mark.asyncio
+async def test_freshness_aware_offsets_and_early_stopping():
+    """Verifies that 1h freshness uses single page offset [0] and does not request offset 25/50."""
+    adapter = LinkedInAdapter()
+    urls_called = []
+
+    async def mock_fetch(url):
+        urls_called.append(url)
+        return """
+        <ul>
+          <li>
+            <div class="base-card" data-entity-urn="urn:li:jobPosting:9001">
+              <a class="base-card__full-link" href="https://linkedin.com/jobs/view/9001"></a>
+              <h3 class="base-search-card__title">Software Engineer</h3>
+              <h4 class="base-search-card__subtitle"><a>Fast Corp</a></h4>
+              <span class="job-search-card__location">Bengaluru, India</span>
+              <time datetime="2026-09-06">30 minutes ago</time>
+            </div>
+          </li>
+        </ul>
+        """
+
+    with patch.object(adapter, "_fetch_url", side_effect=mock_fetch):
+        jobs = await adapter.search(JobSearchQuery(roles=["Software Engineer"], freshness_hours=1, limit=10))
+        assert len(jobs) == 1
+        # 1h freshness should only call offset 0
+        assert any("start=0" in u for u in urls_called)
+        assert not any("start=25" in u for u in urls_called)
+        assert not any("start=50" in u for u in urls_called)
+
+
+@pytest.mark.asyncio
+async def test_global_hydration_budget():
+    """Verifies that detail hydration respects global cap and does not hydrate every card synchronously."""
+    adapter = LinkedInAdapter()
+    hydration_urls = []
+
+    mock_search_html = """
+    <ul>
+      <li>
+        <div class="base-card" data-entity-urn="urn:li:jobPosting:8001">
+          <a class="base-card__full-link" href="https://linkedin.com/jobs/view/8001"></a>
+          <h3 class="base-search-card__title">Short Desc Job 1</h3>
+          <h4 class="base-search-card__subtitle"><a>Company 1</a></h4>
+          <span class="job-search-card__location">Bengaluru, India</span>
+          <time datetime="2026-09-06">2 hours ago</time>
+        </div>
+      </li>
+      <li>
+        <div class="base-card" data-entity-urn="urn:li:jobPosting:8002">
+          <a class="base-card__full-link" href="https://linkedin.com/jobs/view/8002"></a>
+          <h3 class="base-search-card__title">Short Desc Job 2</h3>
+          <h4 class="base-search-card__subtitle"><a>Company 2</a></h4>
+          <span class="job-search-card__location">Bengaluru, India</span>
+          <time datetime="2026-09-06">2 hours ago</time>
+        </div>
+      </li>
+      <li>
+        <div class="base-card" data-entity-urn="urn:li:jobPosting:8003">
+          <a class="base-card__full-link" href="https://linkedin.com/jobs/view/8003"></a>
+          <h3 class="base-search-card__title">Short Desc Job 3</h3>
+          <h4 class="base-search-card__subtitle"><a>Company 3</a></h4>
+          <span class="job-search-card__location">Bengaluru, India</span>
+          <time datetime="2026-09-06">2 hours ago</time>
+        </div>
+      </li>
+      <li>
+        <div class="base-card" data-entity-urn="urn:li:jobPosting:8004">
+          <a class="base-card__full-link" href="https://linkedin.com/jobs/view/8004"></a>
+          <h3 class="base-search-card__title">Short Desc Job 4</h3>
+          <h4 class="base-search-card__subtitle"><a>Company 4</a></h4>
+          <span class="job-search-card__location">Bengaluru, India</span>
+          <time datetime="2026-09-06">2 hours ago</time>
+        </div>
+      </li>
+    </ul>
+    """
+
+    async def mock_fetch(url):
+        return mock_search_html
+
+    async def mock_get_job(url, use_browser=False):
+        hydration_urls.append(url)
+        return RawJob(
+            source="linkedin",
+            source_job_id="hydrated_id",
+            title="Hydrated Title",
+            company_name="Company",
+            description="A" * 300,
+            location="Bengaluru, India",
+            source_url=url,
+        )
+
+    with patch.object(adapter, "_fetch_url", side_effect=mock_fetch):
+        with patch.object(adapter, "get_job", side_effect=mock_get_job):
+            # freshness_hours=4 has global hydration budget = 3
+            jobs = await adapter.search(JobSearchQuery(roles=["Software Engineer"], freshness_hours=4, limit=50))
+            assert len(jobs) == 4
+            # Hydration must not exceed 3
+            assert len(hydration_urls) <= 3
+
+
+@pytest.mark.asyncio
+async def test_browser_fallback_budget_and_circuit_breaker():
+    """Verifies that browser fallbacks are limited and disabled after failure."""
+    adapter = LinkedInAdapter()
+    crawl4ai_calls = []
+    playwright_calls = []
+
+    async def mock_fetch(url):
+        return ""  # Always simulate guest API miss
+
+    async def mock_crawl4ai(url, timeout=20.0):
+        crawl4ai_calls.append(url)
+        return None  # Crawl4AI failure
+
+    async def mock_browser(url, timeout=20.0):
+        playwright_calls.append(url)
+        return None  # Browser failure
+
+    with patch.object(adapter, "_fetch_url", side_effect=mock_fetch):
+        with patch.object(adapter, "_fetch_via_crawl4ai", side_effect=mock_crawl4ai):
+            with patch.object(adapter, "_fetch_via_browser", side_effect=mock_browser):
+                jobs = await adapter.search(JobSearchQuery(roles=["Engineer 1", "Engineer 2"], freshness_hours=1))
+                # For 1h freshness, browser fallback should only be attempted on the 1st query, then disabled for 2nd query
+                assert len(crawl4ai_calls) == 1
+                assert len(playwright_calls) == 1
+                assert adapter._metrics.browser_fallbacks_count == 1
+                assert len(jobs) == 0

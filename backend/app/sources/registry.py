@@ -170,7 +170,7 @@ class SourceRegistry:
             except Exception as e:
                 logger.error("source_sync_isolated_aborted", source=src.source_name, error=str(e))
                 aggregated_stats["failed_sources"].append({"source": src.source_name, "error": str(e)})
-                if "403" in str(e) or "429" in str(e) or "block" in str(e).lower():
+                if "403" in str(e) or "block" in str(e).lower():
                     src_status = "blocked"
                     src_err_cat = "rate_limit_block"
                 else:

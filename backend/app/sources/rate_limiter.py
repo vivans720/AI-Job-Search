@@ -33,8 +33,8 @@ class SourceRateLimiter:
         self.per = per or cfg["per"]
         self.min_interval = self.per / self.rate
 
-    async def acquire(self) -> None:
-        """Enforces rate limit by delaying if needed before proceeding."""
+    async def acquire(self) -> float:
+        """Enforces rate limit by delaying if needed before proceeding. Returns waited seconds."""
         # Check Redis availability
         client: Optional[aioredis.Redis] = None
         try:
@@ -45,8 +45,8 @@ class SourceRateLimiter:
 
         if client:
             try:
-                await self._acquire_redis(client)
-                return
+                waited = await self._acquire_redis(client)
+                return waited
             except Exception as e:
                 logger.warning("redis_rate_limiter_failed_fallback_local", source=self.source_name, error=str(e))
             finally:
@@ -55,9 +55,9 @@ class SourceRateLimiter:
                 except Exception:
                     pass
 
-        await self._acquire_local()
+        return await self._acquire_local()
 
-    async def _acquire_redis(self, client: aioredis.Redis) -> None:
+    async def _acquire_redis(self, client: aioredis.Redis) -> float:
         key = f"rate_limit:source:{self.source_name}"
         now = time.time()
         # Clean timestamps older than window
@@ -67,6 +67,7 @@ class SourceRateLimiter:
         pipe.zcard(key)
         results = await pipe.execute()
         current_count = results[1]
+        waited = 0.0
 
         if current_count >= self.rate:
             # Get earliest entry in window
@@ -76,16 +77,19 @@ class SourceRateLimiter:
                 sleep_sec = max(0.05, (oldest_time + self.per) - now)
                 logger.info("source_rate_limited_sleeping_redis", source=self.source_name, sleep_sec=round(sleep_sec, 2))
                 await asyncio.sleep(sleep_sec)
+                waited = sleep_sec
                 now = time.time()
 
         # Add current timestamp
         await client.zadd(key, {f"{now}": now})
         await client.expire(key, int(self.per * 2))
+        return waited
 
-    async def _acquire_local(self) -> None:
+    async def _acquire_local(self) -> float:
         if self.source_name not in _in_memory_locks:
             _in_memory_locks[self.source_name] = asyncio.Lock()
 
+        waited = 0.0
         async with _in_memory_locks[self.source_name]:
             now = time.time()
             last = _in_memory_last_called.get(self.source_name, 0.0)
@@ -94,7 +98,9 @@ class SourceRateLimiter:
                 sleep_sec = self.min_interval - elapsed
                 logger.debug("source_rate_limited_sleeping_local", source=self.source_name, sleep_sec=round(sleep_sec, 2))
                 await asyncio.sleep(sleep_sec)
+                waited = sleep_sec
             _in_memory_last_called[self.source_name] = time.time()
+        return waited
 
     async def __aenter__(self):
         await self.acquire()

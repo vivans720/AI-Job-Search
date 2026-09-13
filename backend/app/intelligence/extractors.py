@@ -1,8 +1,15 @@
 import io
 import uuid
 from typing import Any
-import pdfplumber
-import docx
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
+
+try:
+    import docx
+except ImportError:
+    docx = None
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
