@@ -4,9 +4,19 @@ from pathlib import Path
 from typing import Any
 import structlog
 
+from app.config import settings
+
 logger = structlog.get_logger(__name__)
 
-DEFAULT_LOG_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "sync_log.jsonl"
+def get_default_log_file() -> Path:
+    configured = getattr(settings, "SYNC_AUDIT_LOG_PATH", "backend/data/sync_log.jsonl")
+    path = Path(configured)
+    if not path.is_absolute():
+        project_root = Path(__file__).resolve().parent.parent.parent
+        path = project_root / path
+    return path
+
+DEFAULT_LOG_FILE = get_default_log_file()
 
 
 def log_sync_event(stats: dict[str, Any], log_file: Path | None = None) -> dict[str, Any]:
@@ -14,7 +24,8 @@ def log_sync_event(stats: dict[str, Any], log_file: Path | None = None) -> dict[
     Appends a structured sync execution record into an append-only JSON Lines file.
     Does not crash on filesystem issues; logs gracefully.
     """
-    target = log_file or DEFAULT_LOG_FILE
+    target = log_file or get_default_log_file()
+
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": stats.get("source", "unknown"),
@@ -41,7 +52,8 @@ def log_sync_event(stats: dict[str, Any], log_file: Path | None = None) -> dict[
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
-        logger.info("sync_audit_logged", source=entry["source"], target=str(target))
+        target_display = str(target.relative_to(Path(__file__).resolve().parent.parent.parent)) if str(target).startswith(str(Path(__file__).resolve().parent.parent.parent)) else str(target)
+        logger.info("sync_audit_logged", source=entry["source"], target=target_display)
     except Exception as e:
         logger.warning("sync_audit_log_failed", error=str(e), path=str(target))
 
@@ -52,7 +64,8 @@ def get_recent_sync_logs(limit: int = 50, log_file: Path | None = None) -> list[
     """
     Reads the most recent sync entries from the audit log (latest first).
     """
-    target = log_file or DEFAULT_LOG_FILE
+    target = log_file or get_default_log_file()
+
     if not target.exists():
         return []
 

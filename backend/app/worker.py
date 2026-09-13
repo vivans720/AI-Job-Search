@@ -153,6 +153,22 @@ async def process_sync_source_job(job, task_queue):
                 report["error_category"] = stats.get("error_category")
             aggregated_stats["sources"][src.source_name] = report
 
+            logger.info(
+                "source_sync_summary",
+                source=src.source_name,
+                status=src_status,
+                queries_executed=metrics_data.get("queries_count", 0),
+                pages_fetched=metrics_data.get("pages_count", 0),
+                candidates_discovered=stats.get("total_discovered", 0),
+                fresh_candidates_accepted=stats.get("fresh_jobs", 0),
+                fresh_candidates_rejected=stats.get("filtered_by_freshness", 0),
+                hydration_count=metrics_data.get("hydration_requests_count", 0),
+                rate_limit_wait_ms=round(metrics_data.get("rate_limit_wait_ms", 0.0), 2),
+                total_duration_ms=round(stats.get("duration_ms", 0.0), 2),
+                persistence_duration_ms=round(stats.get("persistence_duration_ms", 0.0), 2),
+            )
+
+
             progress_tracker[src.source_name] = {
                 "status": src_status,
                 "discovered": stats.get("total_discovered", 0),

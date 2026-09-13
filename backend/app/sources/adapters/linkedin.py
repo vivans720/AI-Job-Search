@@ -234,25 +234,21 @@ class LinkedInAdapter(JobSource):
         elif query.roles:
             roles_to_include = query.roles
 
-        # For tight windows (<= 1h), focus strictly on primary core roles
+        # For tight windows (<= 4h), focus strictly on top primary core roles
         if freshness_h <= 1 and roles_to_include:
             roles_to_include = roles_to_include[:2]
-        elif freshness_h <= 4 and len(roles_to_include) > 3:
-            roles_to_include = roles_to_include[:3]
+        elif freshness_h <= 4 and roles_to_include:
+            roles_to_include = roles_to_include[:2]
 
         for r in roles_to_include:
             clean_r = r.strip()
             if clean_r and clean_r.lower() not in [s.lower() for s in search_terms]:
                 search_terms.append(clean_r)
 
-        # 3. Skills budgeting: For very short windows (<= 1h), do not fan out into 10+ skill variants.
-        # Broader queries like 'Software Engineer' already match these descriptions via f_TPR.
-        if freshness_h > 1:
+        # 3. Skills budgeting: For windows <= 4h, avoid fanning out into multiple skill variants.
+        # Core role queries ('Software Engineer', 'Full Stack Developer') already match these skills.
+        if freshness_h > 4:
             raw_skills = query.skills if query.skills else []
-            # In medium windows (<= 4h), cap raw skills
-            if freshness_h <= 4 and len(raw_skills) > 3:
-                raw_skills = raw_skills[:3]
-
             for s in raw_skills:
                 clean_s = s.lower().strip()
                 if not clean_s:
@@ -279,16 +275,14 @@ class LinkedInAdapter(JobSource):
                 deduped.append(term)
 
         if not deduped:
-            deduped = list(DEFAULT_TARGETED_SKILLS[:2] if freshness_h <= 1 else DEFAULT_TARGETED_SKILLS)
+            deduped = list(DEFAULT_TARGETED_SKILLS[:2] if freshness_h <= 4 else DEFAULT_TARGETED_SKILLS)
 
         # Hard cap queries based on freshness window
-        if freshness_h <= 1:
+        if freshness_h <= 4:
             return deduped[:2]
-        elif freshness_h <= 4:
-            return deduped[:4]
         elif freshness_h <= 8:
-            return deduped[:6]
-        return deduped[:10]
+            return deduped[:4]
+        return deduped[:8]
 
     async def _fetch_url(self, target_url: str) -> str | None:
         """
@@ -621,7 +615,7 @@ class LinkedInAdapter(JobSource):
         f_tpr_seconds = freshness_h * 3600
         f_tpr = f"r{f_tpr_seconds}"
 
-        # Freshness-aware pagination offsets
+        # Freshness-aware pagination offsets: start at 0, only check 25 if first page yields high count
         if freshness_h <= 1:
             offsets = [0]
         elif freshness_h <= 4:
@@ -629,13 +623,15 @@ class LinkedInAdapter(JobSource):
         else:
             offsets = [0, 25, 50]
 
-        # Global per-sync hydration budget
-        if freshness_h <= 1:
-            global_hydration_budget = 0  # 1h: skip sync detail hydration; rely on card text + async enrichment
-        elif freshness_h <= 4:
-            global_hydration_budget = 3
+        # Global per-sync hydration budget:
+        # For <= 4h, skip synchronous detail hydration during sync loop.
+        # Card descriptions + titles are complete enough for deterministic extraction & matching.
+        # This saves 3 requests (30-60s of rate limit headroom).
+        if freshness_h <= 4:
+            global_hydration_budget = 0
         else:
             global_hydration_budget = 10
+
 
         global_hydrated_count = 0
         consecutive_failures = 0
@@ -759,10 +755,12 @@ class LinkedInAdapter(JobSource):
                         all_raw_jobs.append(job)
                         role_discovered += 1
 
-                    if new_on_page == 0:
+                    if new_on_page == 0 or (freshness_h <= 4 and new_on_page < 10):
+                        # Tight freshness window: if offset 0 returned < 10 jobs, offset 25 will not have fresh postings
                         break
 
                     await asyncio.sleep(0.1)
+
 
                 if role_discovered > 0:
                     consecutive_failures = 0

@@ -7,13 +7,22 @@ from app.config import settings
 
 logger = structlog.get_logger(__name__)
 
-# Defaults: requests per minute per source
-SOURCE_RATE_LIMITS = {
-    "linkedin": {"rate": 5, "per": 60.0},     # 5 req/min (conservative)
-    "naukri": {"rate": 15, "per": 60.0},      # 15 req/min
-    "internshala": {"rate": 20, "per": 60.0}, # 20 req/min
-    "default": {"rate": 30, "per": 60.0},
-}
+def get_source_rate_limits() -> dict[str, dict[str, float]]:
+    return {
+        "linkedin": {
+            "rate": getattr(settings, "RATE_LIMIT_LINKEDIN_RATE", 10),
+            "per": getattr(settings, "RATE_LIMIT_LINKEDIN_PER", 60.0),
+        },
+        "naukri": {
+            "rate": getattr(settings, "RATE_LIMIT_NAUKRI_RATE", 15),
+            "per": getattr(settings, "RATE_LIMIT_NAUKRI_PER", 60.0),
+        },
+        "internshala": {
+            "rate": getattr(settings, "RATE_LIMIT_INTERNSHALA_RATE", 20),
+            "per": getattr(settings, "RATE_LIMIT_INTERNSHALA_PER", 60.0),
+        },
+        "default": {"rate": 30, "per": 60.0},
+    }
 
 _in_memory_locks: dict[str, asyncio.Lock] = {}
 _in_memory_last_called: dict[str, float] = {}
@@ -28,17 +37,22 @@ class SourceRateLimiter:
 
     def __init__(self, source_name: str, rate: Optional[int] = None, per: Optional[float] = None):
         self.source_name = source_name.lower()
-        cfg = SOURCE_RATE_LIMITS.get(self.source_name, SOURCE_RATE_LIMITS["default"])
+        limits = get_source_rate_limits()
+        cfg = limits.get(self.source_name, limits["default"])
         self.rate = rate or cfg["rate"]
         self.per = per or cfg["per"]
         self.min_interval = self.per / self.rate
 
     async def acquire(self) -> float:
         """Enforces rate limit by delaying if needed before proceeding. Returns waited seconds."""
-        # Check Redis availability
+        from app.core.redis import get_redis
         client: Optional[aioredis.Redis] = None
+        should_close = False
         try:
-            client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            client = await get_redis()
+            if not client:
+                client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+                should_close = True
             await client.ping()
         except Exception:
             client = None
@@ -50,12 +64,14 @@ class SourceRateLimiter:
             except Exception as e:
                 logger.warning("redis_rate_limiter_failed_fallback_local", source=self.source_name, error=str(e))
             finally:
-                try:
-                    await client.aclose()
-                except Exception:
-                    pass
+                if should_close and client:
+                    try:
+                        await client.aclose()
+                    except Exception:
+                        pass
 
         return await self._acquire_local()
+
 
     async def _acquire_redis(self, client: aioredis.Redis) -> float:
         key = f"rate_limit:source:{self.source_name}"

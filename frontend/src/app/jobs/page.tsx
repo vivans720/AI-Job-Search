@@ -1506,11 +1506,30 @@ export default function JobsPage() {
       {/* Sync Telemetry Modal */}
       <SyncProgressModal
         isOpen={syncModalOpen}
-        onClose={() => setSyncModalOpen(false)}
+        onClose={() => {
+          setSyncModalOpen(false);
+          setSyncing(false);
+          setSyncJobId(null);
+        }}
         jobId={syncJobId}
         source={syncSource}
-        onSyncComplete={() => {
+        onSyncComplete={(summary) => {
           fetchJobs(1);
+          setSyncing(false);
+          if (summary) {
+            if (summary.status === "completed" || summary.status === "partial_success") {
+              const srcNames = summary.sources_synced?.join(", ") || syncSource;
+              setSyncNotification({
+                type: "success",
+                message: `Sync complete (${srcNames}): ${summary.total_discovered || 0} scanned, ${summary.fresh_jobs || 0} fresh, ${summary.canonical_saved || 0} new saved, ${summary.updated_existing || 0} refreshed.`,
+              });
+            } else if (summary.status === "failed" || summary.status === "blocked") {
+              setSyncNotification({
+                type: "error",
+                message: summary.error || `Failed to sync with ${syncSource}.`,
+              });
+            }
+          }
         }}
       />
 

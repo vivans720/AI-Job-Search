@@ -699,11 +699,55 @@ async def test_global_hydration_budget():
 
     with patch.object(adapter, "_fetch_url", side_effect=mock_fetch):
         with patch.object(adapter, "get_job", side_effect=mock_get_job):
-            # freshness_hours=4 has global hydration budget = 3
-            jobs = await adapter.search(JobSearchQuery(roles=["Software Engineer"], freshness_hours=4, limit=50))
-            assert len(jobs) == 4
-            # Hydration must not exceed 3
-            assert len(hydration_urls) <= 3
+            # freshness_hours=8 has global hydration budget = 10, <=4h has 0
+            jobs_8h = await adapter.search(JobSearchQuery(roles=["Software Engineer"], freshness_hours=8, limit=50))
+            assert len(jobs_8h) == 4
+            assert len(hydration_urls) <= 10
+
+            hydration_urls.clear()
+            # freshness_hours=4 skips sync hydration (budget = 0)
+            jobs_4h = await adapter.search(JobSearchQuery(roles=["Software Engineer"], freshness_hours=4, limit=50))
+            assert len(jobs_4h) == 4
+            assert len(hydration_urls) == 0
+
+
+@pytest.mark.asyncio
+async def test_4h_freshness_request_budget_and_early_stopping():
+    """Verifies that freshness_hours=4 uses minimal requests, caps queries at 2, and skips unnecessary pages."""
+    adapter = LinkedInAdapter()
+    urls_called = []
+
+    mock_search_html = """
+    <ul>
+      <li>
+        <div class="base-card" data-entity-urn="urn:li:jobPosting:9002">
+          <a class="base-card__full-link" href="https://linkedin.com/jobs/view/9002"></a>
+          <h3 class="base-search-card__title">Software Engineer</h3>
+          <h4 class="base-search-card__subtitle"><a>Company 2</a></h4>
+          <span class="job-search-card__location">Bengaluru, India</span>
+          <time datetime="2026-09-06">2 hours ago</time>
+        </div>
+      </li>
+    </ul>
+    """
+
+    async def mock_fetch(url):
+        urls_called.append(url)
+        return mock_search_html
+
+    with patch.object(adapter, "_fetch_url", side_effect=mock_fetch):
+        # Even with 5 roles and 5 skills, 4h freshness caps to 2 queries and skips offset 25 when page 0 yielded <10 jobs
+        jobs = await adapter.search(JobSearchQuery(
+            roles=["Software Engineer", "Backend Developer", "Frontend Developer", "DevOps"],
+            skills=["python", "react", "node.js"],
+            freshness_hours=4,
+            limit=50,
+        ))
+        assert len(jobs) == 1  # 2nd query returned duplicate job id 9002 so deduplicated
+        assert adapter._metrics.queries_count == 2
+        # Exactly 2 search requests executed (1 page per query), 0 hydration requests
+        assert len(urls_called) == 2
+        assert adapter._metrics.hydration_requests_count == 0
 
 
 @pytest.mark.asyncio
@@ -733,3 +777,4 @@ async def test_browser_fallback_budget_and_circuit_breaker():
                 assert len(playwright_calls) == 1
                 assert adapter._metrics.browser_fallbacks_count == 1
                 assert len(jobs) == 0
+

@@ -152,5 +152,16 @@ class Settings(BaseSettings):
     TOR_ENABLED: bool = True
     TOR_FALLBACK_ON_BLOCKED: bool = True
 
+    # Source Rate Limiting (req / window_seconds)
+    RATE_LIMIT_LINKEDIN_RATE: int = 10
+    RATE_LIMIT_LINKEDIN_PER: float = 60.0
+    RATE_LIMIT_NAUKRI_RATE: int = 15
+    RATE_LIMIT_NAUKRI_PER: float = 60.0
+    RATE_LIMIT_INTERNSHALA_RATE: int = 20
+    RATE_LIMIT_INTERNSHALA_PER: float = 60.0
+
+    # Audit logging
+    SYNC_AUDIT_LOG_PATH: str = "backend/data/sync_log.jsonl"
+
 
 settings = Settings()

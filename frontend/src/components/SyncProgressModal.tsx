@@ -20,12 +20,22 @@ export interface SourceProgress {
   embeddings?: number;
 }
 
+export interface SyncResultSummary {
+  status: "completed" | "partial_success" | "failed" | "blocked";
+  total_discovered?: number;
+  canonical_saved?: number;
+  updated_existing?: number;
+  fresh_jobs?: number;
+  sources_synced?: string[];
+  error?: string;
+}
+
 export interface SyncProgressModalProps {
   isOpen: boolean;
   onClose: () => void;
   jobId: string | null;
   source: string;
-  onSyncComplete?: () => void;
+  onSyncComplete?: (summary?: SyncResultSummary) => void;
 }
 
 export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
@@ -52,6 +62,10 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
   });
   const [error, setError] = useState<string | null>(null);
   const hasCompletedRef = React.useRef(false);
+  const onSyncCompleteRef = React.useRef(onSyncComplete);
+  onSyncCompleteRef.current = onSyncComplete;
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!isOpen) {
@@ -67,17 +81,18 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
     hasCompletedRef.current = false;
     let isMounted = true;
     let pollTimer: NodeJS.Timeout | null = null;
+    let autoCloseTimer: NodeJS.Timeout | null = null;
 
     const poll = async () => {
       try {
         const res = await fetch(`http://localhost:8000/api/v1/jobs/sync/status/${jobId}`);
         if (!res.ok) {
-          if (isMounted) pollTimer = setTimeout(poll, 2000);
+          if (isMounted && !hasCompletedRef.current) pollTimer = setTimeout(poll, 2000);
           return;
         }
 
         const data = await res.json();
-        if (!isMounted) return;
+        if (!isMounted || hasCompletedRef.current) return;
 
         const currentStatus = data.status || "running";
         setStatus(currentStatus);
@@ -126,14 +141,33 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
 
           if (!hasCompletedRef.current) {
             hasCompletedRef.current = true;
-            if (onSyncComplete) onSyncComplete();
+            if (onSyncCompleteRef.current) {
+              onSyncCompleteRef.current({
+                status: currentStatus,
+                total_discovered: resStats.total_discovered || 0,
+                canonical_saved: resStats.canonical_saved || 0,
+                updated_existing: resStats.updated_existing || 0,
+                fresh_jobs: resStats.fresh_jobs || 0,
+                sources_synced: resStats.sources_synced || (Object.keys(sMap).length > 0 ? Object.keys(sMap) : undefined),
+              });
+            }
+            // Automatically close modal after brief visual delay
+            autoCloseTimer = setTimeout(() => {
+              if (isMounted && onCloseRef.current) onCloseRef.current();
+            }, 1800);
           }
           return;
         } else if (currentStatus === "failed" || currentStatus === "blocked") {
-          setError(data.error || (currentStatus === "blocked" ? "Sync blocked by source perimeter." : "Ingestion pipeline encountered an error."));
+          const errMsg = data.error || (currentStatus === "blocked" ? "Sync blocked by source perimeter." : "Ingestion pipeline encountered an error.");
+          setError(errMsg);
           if (!hasCompletedRef.current) {
             hasCompletedRef.current = true;
-            if (onSyncComplete) onSyncComplete();
+            if (onSyncCompleteRef.current) {
+              onSyncCompleteRef.current({
+                status: currentStatus,
+                error: errMsg,
+              });
+            }
           }
           return;
         }
@@ -167,11 +201,11 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
           });
         }
 
-        if (!isTerminal && isMounted) {
+        if (!isTerminal && isMounted && !hasCompletedRef.current) {
           pollTimer = setTimeout(poll, 1200);
         }
       } catch {
-        if (!isMounted) return;
+        if (!isMounted || hasCompletedRef.current) return;
         pollTimer = setTimeout(poll, 2000);
       }
     };
@@ -181,8 +215,9 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
     return () => {
       isMounted = false;
       if (pollTimer) clearTimeout(pollTimer);
+      if (autoCloseTimer) clearTimeout(autoCloseTimer);
     };
-  }, [isOpen, jobId, onSyncComplete]);
+  }, [isOpen, jobId]);
 
   if (!isOpen) return null;
 
