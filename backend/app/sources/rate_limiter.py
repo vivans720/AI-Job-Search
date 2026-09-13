@@ -24,6 +24,8 @@ def get_source_rate_limits() -> dict[str, dict[str, float]]:
         "default": {"rate": 30, "per": 60.0},
     }
 
+SOURCE_RATE_LIMITS = get_source_rate_limits()
+
 _in_memory_locks: dict[str, asyncio.Lock] = {}
 _in_memory_last_called: dict[str, float] = {}
 

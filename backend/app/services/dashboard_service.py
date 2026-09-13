@@ -133,11 +133,12 @@ async def get_dashboard_data(
     registry = get_source_registry()
     health_results = await registry.health_check_all()
     source_details = {}
-    from app.sources.rate_limiter import SOURCE_RATE_LIMITS
+    from app.sources.rate_limiter import get_source_rate_limits, SOURCE_RATE_LIMITS
+    all_limits = get_source_rate_limits() if callable(get_source_rate_limits) else SOURCE_RATE_LIMITS
 
     for name, src in registry._sources.items():
         metrics = src.get_metrics().model_dump() if hasattr(src, "get_metrics") else {}
-        limits = SOURCE_RATE_LIMITS.get(name, SOURCE_RATE_LIMITS.get("default", {}))
+        limits = all_limits.get(name, all_limits.get("default", {}))
         source_details[name] = {
             "healthy": health_results.get(name, False),
             "enabled": src.enabled,
