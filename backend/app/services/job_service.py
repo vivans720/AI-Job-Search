@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -23,6 +24,21 @@ VALID_STATUSES = {
     "OFFER",
     "IGNORED",
 }
+
+
+def _matches_location_token(token: str, text: str) -> bool:
+    """
+    Match location token in text using word boundaries to prevent substring collisions
+    (e.g., preventing 'del' from matching 'hyderabad' or short tokens falsely matching).
+    """
+    if not token or not text:
+        return False
+    # If token is short (<= 4 chars) or single word, use word boundary check
+    if len(token) <= 4 or " " not in token:
+        pattern = r"\b" + re.escape(token) + r"\b"
+        return bool(re.search(pattern, text))
+    return token in text
+
 
 
 async def search_jobs_db(
@@ -147,7 +163,14 @@ async def search_jobs_db(
 
         if locs_lower:
             from app.core.location_taxonomy import expand_location_query
-            is_remote_match = include_remote and job.remote_type == "REMOTE"
+            user_requested_remote = any(
+                r in loc for loc in locs_lower for r in ["remote", "work from home", "wfh", "telecommute"]
+            )
+            is_remote_match = (
+                job.remote_type == "REMOTE"
+                or any(r in (job.location or "").lower() for r in ["work from home", "remote", "wfh"])
+            ) and user_requested_remote
+
             job_loc_l = (job.location or "").lower()
             job_norm_l = (job.normalized_location or "").lower()
 
@@ -155,7 +178,7 @@ async def search_jobs_db(
             expanded_search_tokens = expand_location_query(locations)
 
             loc_match = is_remote_match or any(
-                token in job_loc_l or token in job_norm_l
+                _matches_location_token(token, job_loc_l) or _matches_location_token(token, job_norm_l)
                 for token in expanded_search_tokens
             )
 
@@ -557,13 +580,24 @@ async def get_job_facets_db(
     from app.core.location_taxonomy import expand_location_query, resolve_canonical_location
     expanded_facet_locations = expand_location_query(locations)
 
+    user_requested_remote_facets = any(
+        r in loc for loc in locs_lower for r in ["remote", "work from home", "wfh", "telecommute"]
+    )
+
     def matches_location(job: Job) -> bool:
         if not locs_lower:
             return True
-        is_remote_match = job.remote_type == "REMOTE"
+        is_remote_job = (
+            job.remote_type == "REMOTE"
+            or any(r in (job.location or "").lower() for r in ["work from home", "remote", "wfh"])
+        )
+        is_remote_match = is_remote_job and user_requested_remote_facets
         job_loc_l = (job.location or "").lower()
         job_norm_l = (job.normalized_location or "").lower()
-        if is_remote_match or any(loc in job_loc_l or loc in job_norm_l for loc in expanded_facet_locations):
+        if is_remote_match or any(
+            _matches_location_token(loc, job_loc_l) or _matches_location_token(loc, job_norm_l)
+            for loc in expanded_facet_locations
+        ):
             return True
         return False
 

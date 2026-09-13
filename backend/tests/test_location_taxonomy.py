@@ -97,8 +97,23 @@ def test_query_expansion():
     assert "whitefield" in expanded_blr
 
 
+def test_delhi_ncr_does_not_leak_other_cities():
+    from app.services.job_service import _matches_location_token
+    expanded_ncr = expand_location_query(["Delhi NCR"])
+    assert "del" not in expanded_ncr
+    assert "hyd" not in expanded_ncr
+    
+    # Check that none of expanded_ncr matches Hyderabad or Bangalore
+    for token in expanded_ncr:
+        assert not _matches_location_token(token, "hyderabad, india")
+        assert not _matches_location_token(token, "hyderabad")
+        assert not _matches_location_token(token, "bengaluru, karnataka")
+        assert not _matches_location_token(token, "mumbai, maharashtra")
+
+
 def test_taxonomy_tree_structure():
     tree = get_taxonomy_tree()
     assert "top_hubs" in tree
     assert "states" in tree
     assert len(tree["states"]) == 36  # 28 + 8
+

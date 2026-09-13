@@ -92,6 +92,22 @@ STATE_CODES: dict[str, str] = {
     "PY": "Puducherry",
 }
 
+# Airport IATA codes mapping directly to (Canonical City, State)
+# Kept separate from query expansion to prevent token substring collisions
+AIRPORT_CODES: dict[str, tuple[str, str]] = {
+    "BLR": ("Bengaluru", "Karnataka"),
+    "DEL": ("Delhi NCR", "Delhi"),
+    "BOM": ("Mumbai", "Maharashtra"),
+    "HYD": ("Hyderabad", "Telangana"),
+    "PNQ": ("Pune", "Maharashtra"),
+    "MAA": ("Chennai", "Tamil Nadu"),
+    "CCU": ("Kolkata", "West Bengal"),
+    "IXC": ("Chandigarh", "Chandigarh"),
+    "AMD": ("Ahmedabad", "Gujarat"),
+    "COK": ("Kochi", "Kerala"),
+    "TRV": ("Thiruvananthapuram", "Kerala"),
+}
+
 METRO_CLUSTERS: dict[str, dict[str, Any]] = {
     "Delhi NCR": {
         "canonical": "Delhi NCR",
@@ -103,7 +119,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "aliases": [
             "delhi ncr", "delhi-ncr", "ncr", "national capital region", "delhi", "new delhi",
             "gurgaon", "gurugram", "noida", "greater noida", "ghaziabad", "faridabad",
-            "del", "manesar"
+            "manesar"
         ],
     },
     "Bengaluru": {
@@ -111,7 +127,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "state_or_ut": "Karnataka",
         "cities": ["Bengaluru", "Mysuru", "Mangaluru", "Hubballi", "Belagavi"],
         "aliases": [
-            "bangalore", "bengaluru", "bangaluru", "blr", "bangalore urban",
+            "bangalore", "bengaluru", "bangaluru", "bangalore urban",
             "bangalore rural", "greater bengaluru area", "whitefield", "electronic city",
             "koramangala", "indiranagar", "bellandur", "marathahalli", "manyata"
         ],
@@ -121,7 +137,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "state_or_ut": "Maharashtra",
         "cities": ["Mumbai", "Navi Mumbai", "Thane", "Kalyan"],
         "aliases": [
-            "mumbai", "bombay", "navi mumbai", "thane", "bom", "bkc", "andheri", "powai",
+            "mumbai", "bombay", "navi mumbai", "thane", "bkc", "andheri", "powai",
             "goregaon", "lower parel", "malad", "mumbai metropolitan region", "mmr"
         ],
     },
@@ -130,7 +146,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "state_or_ut": "Telangana",
         "cities": ["Hyderabad", "Secunderabad", "Warangal"],
         "aliases": [
-            "hyderabad", "secunderabad", "cyberabad", "hyd", "hitec city", "gachibowli",
+            "hyderabad", "secunderabad", "cyberabad", "hitec city", "gachibowli",
             "madhapur", "kondapur", "kukatpally"
         ],
     },
@@ -140,7 +156,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "cities": ["Pune", "Pimpri-Chinchwad", "Nagpur", "Nashik"],
         "aliases": [
             "pune", "poona", "pcmc", "pimpri chinchwad", "hinjewadi", "hinjawadi",
-            "magarpatta", "pnq", "kharadi", "viman nagar", "baner", "wakad"
+            "magarpatta", "kharadi", "viman nagar", "baner", "wakad"
         ],
     },
     "Chennai": {
@@ -148,7 +164,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "state_or_ut": "Tamil Nadu",
         "cities": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli"],
         "aliases": [
-            "chennai", "madras", "greater chennai area", "maa", "omr", "guindy",
+            "chennai", "madras", "greater chennai area", "omr", "guindy",
             "sholinganallur", "tidel park", "velachery"
         ],
     },
@@ -157,7 +173,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "state_or_ut": "West Bengal",
         "cities": ["Kolkata", "Howrah", "Durgapur", "Siliguri"],
         "aliases": [
-            "kolkata", "calcutta", "ccu", "salt lake", "salt lake city", "sector v",
+            "kolkata", "calcutta", "salt lake", "salt lake city", "sector v",
             "new town", "rajarhat", "bidhannagar"
         ],
     },
@@ -166,7 +182,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "state_or_ut": "Chandigarh",
         "cities": ["Chandigarh", "Mohali", "Panchkula"],
         "aliases": [
-            "chandigarh", "mohali", "panchkula", "sas nagar", "tricity", "ixc"
+            "chandigarh", "mohali", "panchkula", "sas nagar", "tricity"
         ],
     },
     "Gujarat Tech Corridor": {
@@ -175,7 +191,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "cities": ["Ahmedabad", "Gandhinagar", "Vadodara", "Surat", "Rajkot"],
         "aliases": [
             "ahmedabad", "amdavad", "gandhinagar", "gift city", "vadodara", "baroda",
-            "surat", "rajkot", "amd"
+            "surat", "rajkot"
         ],
     },
     "Kerala Tech Corridor": {
@@ -184,7 +200,7 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "cities": ["Kochi", "Thiruvananthapuram", "Kozhikode"],
         "aliases": [
             "kochi", "cochin", "infopark", "ernakulam", "thiruvananthapuram", "trivandrum",
-            "technopark", "technocity", "calicut", "kozhikode", "cyberpark", "cok", "trv"
+            "technopark", "technocity", "calicut", "kozhikode", "cyberpark"
         ],
     },
 }
@@ -239,7 +255,6 @@ SPECIAL_ALIASES: dict[str, tuple[str, str]] = {
     "bangalore": ("Bengaluru", "Karnataka"),
     "bengaluru": ("Bengaluru", "Karnataka"),
     "bangaluru": ("Bengaluru", "Karnataka"),
-    "blr": ("Bengaluru", "Karnataka"),
     "whitefield": ("Bengaluru", "Karnataka"),
     "electronic city": ("Bengaluru", "Karnataka"),
     "koramangala": ("Bengaluru", "Karnataka"),
@@ -258,7 +273,6 @@ SPECIAL_ALIASES: dict[str, tuple[str, str]] = {
     "new delhi": ("Delhi NCR", "Delhi"),
     "delhi ncr": ("Delhi NCR", "Delhi"),
     "ncr": ("Delhi NCR", "Delhi"),
-    "del": ("Delhi NCR", "Delhi"),
     "gurgaon": ("Gurugram", "Haryana"),
     "gurugram": ("Gurugram", "Haryana"),
     "noida": ("Delhi NCR", "Uttar Pradesh"),
@@ -270,7 +284,6 @@ SPECIAL_ALIASES: dict[str, tuple[str, str]] = {
     # Maharashtra
     "mumbai": ("Mumbai", "Maharashtra"),
     "bombay": ("Mumbai", "Maharashtra"),
-    "bom": ("Mumbai", "Maharashtra"),
     "navi mumbai": ("Navi Mumbai", "Maharashtra"),
     "thane": ("Thane", "Maharashtra"),
     "bkc": ("Mumbai", "Maharashtra"),
@@ -279,7 +292,6 @@ SPECIAL_ALIASES: dict[str, tuple[str, str]] = {
     "goregaon": ("Mumbai", "Maharashtra"),
     "pune": ("Pune", "Maharashtra"),
     "poona": ("Pune", "Maharashtra"),
-    "pnq": ("Pune", "Maharashtra"),
     "hinjewadi": ("Pune", "Maharashtra"),
     "hinjawadi": ("Pune", "Maharashtra"),
     "magarpatta": ("Pune", "Maharashtra"),
@@ -294,7 +306,6 @@ SPECIAL_ALIASES: dict[str, tuple[str, str]] = {
     "hyderabad": ("Hyderabad", "Telangana"),
     "secunderabad": ("Hyderabad", "Telangana"),
     "cyberabad": ("Hyderabad", "Telangana"),
-    "hyd": ("Hyderabad", "Telangana"),
     "hitec city": ("Hyderabad", "Telangana"),
     "hitech city": ("Hyderabad", "Telangana"),
     "gachibowli": ("Hyderabad", "Telangana"),
@@ -306,7 +317,6 @@ SPECIAL_ALIASES: dict[str, tuple[str, str]] = {
     # Tamil Nadu
     "chennai": ("Chennai", "Tamil Nadu"),
     "madras": ("Chennai", "Tamil Nadu"),
-    "maa": ("Chennai", "Tamil Nadu"),
     "omr": ("Chennai", "Tamil Nadu"),
     "guindy": ("Chennai", "Tamil Nadu"),
     "tidel park": ("Chennai", "Tamil Nadu"),
@@ -315,7 +325,6 @@ SPECIAL_ALIASES: dict[str, tuple[str, str]] = {
     # West Bengal
     "kolkata": ("Kolkata", "West Bengal"),
     "calcutta": ("Kolkata", "West Bengal"),
-    "ccu": ("Kolkata", "West Bengal"),
     "salt lake": ("Kolkata", "West Bengal"),
     "salt lake city": ("Kolkata", "West Bengal"),
     "sector v": ("Kolkata", "West Bengal"),
@@ -382,6 +391,15 @@ def resolve_canonical_location(raw_location: str | None) -> ResolvedLocation:
             canonical_name=state_full,
             state_or_ut=state_full,
             is_state_level=True,
+            raw_input=raw_clean,
+        )
+
+    if raw_clean.upper() in AIRPORT_CODES:
+        city, state = AIRPORT_CODES[raw_clean.upper()]
+        return ResolvedLocation(
+            canonical_name=city,
+            state_or_ut=state,
+            is_metro=False,
             raw_input=raw_clean,
         )
 
@@ -460,13 +478,22 @@ def expand_location_query(locations: list[str] | None) -> set[str]:
                 for c in cities:
                     expanded.add(c.lower())
 
-        # Metro Cluster Expansion
+        # Metro Cluster Expansion (expand downward only when user asks for the cluster)
         for cluster_info in METRO_CLUSTERS.values():
-            if loc_lower == cluster_info["canonical"].lower() or loc_lower in cluster_info["aliases"]:
+            is_cluster_request = (
+                loc_lower == cluster_info["canonical"].lower()
+                or loc_lower in [a.lower() for a in cluster_info["aliases"]]
+            )
+            if is_cluster_request:
                 for alias in cluster_info["aliases"]:
                     expanded.add(alias.lower())
                 for city in cluster_info["cities"]:
                     expanded.add(city.lower())
+
+        # Remote / WFH expansion
+        if any(r in loc_lower for r in ["remote", "work from home", "wfh", "telecommute"]):
+            for r_alias in ["remote", "work from home", "wfh", "telecommute", "anywhere in india", "remote (india)"]:
+                expanded.add(r_alias)
 
         # Individual City alias expansion
         if loc_lower in CANONICAL_CITY_LOOKUP:

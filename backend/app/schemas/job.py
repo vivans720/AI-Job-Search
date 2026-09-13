@@ -10,6 +10,7 @@ class JobListItem(BaseModel):
     title: str
     company: str
     location: str | None = None
+    normalized_location: str | None = None
     remote_type: str = "ONSITE"
     employment_type: str = "FULL_TIME"
     salary: str = "Not disclosed"

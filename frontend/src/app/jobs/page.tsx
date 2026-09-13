@@ -678,20 +678,8 @@ export default function JobsPage() {
   };
 
   const filteredJobs = jobs.filter((job) => {
-    if (selectedLocations.length > 0) {
-      const jobLoc = (job.location ?? "").toLowerCase();
-      const jobNormLoc = (job.normalized_location ?? "").toLowerCase();
-      const matches = selectedLocations.some((loc) => {
-        const normalizedLoc = loc.toLowerCase();
-        return (
-          jobLoc === normalizedLoc ||
-          jobLoc.includes(normalizedLoc) ||
-          jobNormLoc === normalizedLoc ||
-          jobNormLoc.includes(normalizedLoc)
-        );
-      });
-      if (!matches) return false;
-    }
+    // Location is already authoritatively filtered by the backend with taxonomy expansion.
+    // Client-side fallback only applies if backend returned jobs without location filtering (e.g. offline).
 
     // Employment type filtering
     if (typeFilter === "JOBS") {
