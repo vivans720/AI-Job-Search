@@ -48,7 +48,19 @@ async def update_preferences(
         if saved_provider_info.get("api_key"):
             update_dict["ai_api_key"] = saved_provider_info["api_key"]
 
-    pref.ai_provider_config = provider_config
+    # Canonicalize preferred_locations if provided
+    if "preferred_locations" in update_dict and update_dict["preferred_locations"] is not None:
+        from app.core.location_taxonomy import parse_location_entities
+        canonical_locs = []
+        seen = set()
+        for loc in update_dict["preferred_locations"]:
+            if not loc:
+                continue
+            for ent in parse_location_entities(loc):
+                if ent.name != "Unknown" and ent.name not in seen:
+                    seen.add(ent.name)
+                    canonical_locs.append(ent.name)
+        update_dict["preferred_locations"] = canonical_locs
 
     for field, value in update_dict.items():
         if value is not None:

@@ -5,7 +5,30 @@ localities, airport codes, and query expansion helpers.
 """
 
 from dataclasses import dataclass
+from enum import Enum
+import re
 from typing import Any
+
+
+class LocationEntityType(str, Enum):
+    CITY = "CITY"
+    METRO = "METRO"
+    STATE = "STATE"
+    COUNTRY = "COUNTRY"
+    REMOTE = "REMOTE"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class LocationEntity:
+    name: str
+    type: LocationEntityType
+    state_or_ut: str | None = None
+    metro: str | None = None
+    country: str = "India"
+    is_remote: bool = False
+    raw_input: str = ""
+
 
 INDIAN_STATES = [
     "Andhra Pradesh",
@@ -92,20 +115,19 @@ STATE_CODES: dict[str, str] = {
     "PY": "Puducherry",
 }
 
-# Airport IATA codes mapping directly to (Canonical City, State)
-# Kept separate from query expansion to prevent token substring collisions
-AIRPORT_CODES: dict[str, tuple[str, str]] = {
-    "BLR": ("Bengaluru", "Karnataka"),
-    "DEL": ("Delhi NCR", "Delhi"),
-    "BOM": ("Mumbai", "Maharashtra"),
-    "HYD": ("Hyderabad", "Telangana"),
-    "PNQ": ("Pune", "Maharashtra"),
-    "MAA": ("Chennai", "Tamil Nadu"),
-    "CCU": ("Kolkata", "West Bengal"),
-    "IXC": ("Chandigarh", "Chandigarh"),
-    "AMD": ("Ahmedabad", "Gujarat"),
-    "COK": ("Kochi", "Kerala"),
-    "TRV": ("Thiruvananthapuram", "Kerala"),
+# Airport IATA codes mapping directly to (Canonical City, State, Metro)
+AIRPORT_CODES: dict[str, tuple[str, str, str | None]] = {
+    "BLR": ("Bengaluru", "Karnataka", None),
+    "DEL": ("Delhi", "Delhi", "Delhi NCR"),
+    "BOM": ("Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "HYD": ("Hyderabad", "Telangana", None),
+    "PNQ": ("Pune", "Maharashtra", None),
+    "MAA": ("Chennai", "Tamil Nadu", None),
+    "CCU": ("Kolkata", "West Bengal", None),
+    "IXC": ("Chandigarh", "Chandigarh", "Tricity (Chandigarh)"),
+    "AMD": ("Ahmedabad", "Gujarat", "Gujarat Tech Corridor"),
+    "COK": ("Kochi", "Kerala", "Kerala Tech Corridor"),
+    "TRV": ("Thiruvananthapuram", "Kerala", "Kerala Tech Corridor"),
 }
 
 METRO_CLUSTERS: dict[str, dict[str, Any]] = {
@@ -113,94 +135,43 @@ METRO_CLUSTERS: dict[str, dict[str, Any]] = {
         "canonical": "Delhi NCR",
         "state_or_ut": "Delhi",
         "cities": [
-            "Delhi", "New Delhi", "Gurugram", "Gurgaon", "Noida", "Greater Noida",
+            "Delhi", "New Delhi", "Gurugram", "Noida", "Greater Noida",
             "Ghaziabad", "Faridabad", "Manesar", "Sonipat"
         ],
         "aliases": [
-            "delhi ncr", "delhi-ncr", "ncr", "national capital region", "delhi", "new delhi",
-            "gurgaon", "gurugram", "noida", "greater noida", "ghaziabad", "faridabad",
-            "manesar"
+            "delhi ncr", "delhi-ncr", "ncr", "national capital region"
         ],
     },
-    "Bengaluru": {
-        "canonical": "Bengaluru",
-        "state_or_ut": "Karnataka",
-        "cities": ["Bengaluru", "Mysuru", "Mangaluru", "Hubballi", "Belagavi"],
-        "aliases": [
-            "bangalore", "bengaluru", "bangaluru", "bangalore urban",
-            "bangalore rural", "greater bengaluru area", "whitefield", "electronic city",
-            "koramangala", "indiranagar", "bellandur", "marathahalli", "manyata"
-        ],
-    },
-    "Mumbai": {
-        "canonical": "Mumbai",
+    "Mumbai Metropolitan Region": {
+        "canonical": "Mumbai Metropolitan Region",
         "state_or_ut": "Maharashtra",
         "cities": ["Mumbai", "Navi Mumbai", "Thane", "Kalyan"],
         "aliases": [
-            "mumbai", "bombay", "navi mumbai", "thane", "bkc", "andheri", "powai",
-            "goregaon", "lower parel", "malad", "mumbai metropolitan region", "mmr"
-        ],
-    },
-    "Hyderabad": {
-        "canonical": "Hyderabad",
-        "state_or_ut": "Telangana",
-        "cities": ["Hyderabad", "Secunderabad", "Warangal"],
-        "aliases": [
-            "hyderabad", "secunderabad", "cyberabad", "hitec city", "gachibowli",
-            "madhapur", "kondapur", "kukatpally"
-        ],
-    },
-    "Pune": {
-        "canonical": "Pune",
-        "state_or_ut": "Maharashtra",
-        "cities": ["Pune", "Pimpri-Chinchwad", "Nagpur", "Nashik"],
-        "aliases": [
-            "pune", "poona", "pcmc", "pimpri chinchwad", "hinjewadi", "hinjawadi",
-            "magarpatta", "kharadi", "viman nagar", "baner", "wakad"
-        ],
-    },
-    "Chennai": {
-        "canonical": "Chennai",
-        "state_or_ut": "Tamil Nadu",
-        "cities": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli"],
-        "aliases": [
-            "chennai", "madras", "greater chennai area", "omr", "guindy",
-            "sholinganallur", "tidel park", "velachery"
-        ],
-    },
-    "Kolkata": {
-        "canonical": "Kolkata",
-        "state_or_ut": "West Bengal",
-        "cities": ["Kolkata", "Howrah", "Durgapur", "Siliguri"],
-        "aliases": [
-            "kolkata", "calcutta", "salt lake", "salt lake city", "sector v",
-            "new town", "rajarhat", "bidhannagar"
+            "mmr", "mumbai metropolitan region", "greater mumbai"
         ],
     },
     "Tricity (Chandigarh)": {
-        "canonical": "Chandigarh",
+        "canonical": "Tricity (Chandigarh)",
         "state_or_ut": "Chandigarh",
         "cities": ["Chandigarh", "Mohali", "Panchkula"],
         "aliases": [
-            "chandigarh", "mohali", "panchkula", "sas nagar", "tricity"
+            "tricity", "chandigarh tricity"
         ],
     },
     "Gujarat Tech Corridor": {
-        "canonical": "Ahmedabad",
+        "canonical": "Gujarat Tech Corridor",
         "state_or_ut": "Gujarat",
         "cities": ["Ahmedabad", "Gandhinagar", "Vadodara", "Surat", "Rajkot"],
         "aliases": [
-            "ahmedabad", "amdavad", "gandhinagar", "gift city", "vadodara", "baroda",
-            "surat", "rajkot"
+            "gujarat tech corridor"
         ],
     },
     "Kerala Tech Corridor": {
-        "canonical": "Kochi",
+        "canonical": "Kerala Tech Corridor",
         "state_or_ut": "Kerala",
         "cities": ["Kochi", "Thiruvananthapuram", "Kozhikode"],
         "aliases": [
-            "kochi", "cochin", "infopark", "ernakulam", "thiruvananthapuram", "trivandrum",
-            "technopark", "technocity", "calicut", "kozhikode", "cyberpark"
+            "kerala tech corridor"
         ],
     },
 }
@@ -244,121 +215,336 @@ STATE_CITIES_MAP: dict[str, list[str]] = {
     "Lakshadweep": ["Kavaratti"],
 }
 
-CANONICAL_CITY_LOOKUP: dict[str, tuple[str, str]] = {}
+CANONICAL_CITY_LOOKUP: dict[str, tuple[str, str, str | None]] = {}
 
 for state_name, cities in STATE_CITIES_MAP.items():
     for city in cities:
-        CANONICAL_CITY_LOOKUP[city.lower()] = (city, state_name)
+        metro_name: str | None = None
+        for m_name, m_info in METRO_CLUSTERS.items():
+            if city in m_info["cities"]:
+                metro_name = m_name
+                break
+        CANONICAL_CITY_LOOKUP[city.lower()] = (city, state_name, metro_name)
 
-SPECIAL_ALIASES: dict[str, tuple[str, str]] = {
-    # Karnataka
-    "bangalore": ("Bengaluru", "Karnataka"),
-    "bengaluru": ("Bengaluru", "Karnataka"),
-    "bangaluru": ("Bengaluru", "Karnataka"),
-    "whitefield": ("Bengaluru", "Karnataka"),
-    "electronic city": ("Bengaluru", "Karnataka"),
-    "koramangala": ("Bengaluru", "Karnataka"),
-    "indiranagar": ("Bengaluru", "Karnataka"),
-    "bellandur": ("Bengaluru", "Karnataka"),
-    "marathahalli": ("Bengaluru", "Karnataka"),
-    "manyata": ("Bengaluru", "Karnataka"),
-    "hebbal": ("Bengaluru", "Karnataka"),
-    "mysore": ("Mysuru", "Karnataka"),
-    "mangalore": ("Mangaluru", "Karnataka"),
-    "hubli": ("Hubballi", "Karnataka"),
-    "belgaum": ("Belagavi", "Karnataka"),
-    
-    # NCR & North
-    "delhi": ("Delhi NCR", "Delhi"),
-    "new delhi": ("Delhi NCR", "Delhi"),
-    "delhi ncr": ("Delhi NCR", "Delhi"),
-    "ncr": ("Delhi NCR", "Delhi"),
-    "gurgaon": ("Gurugram", "Haryana"),
-    "gurugram": ("Gurugram", "Haryana"),
-    "noida": ("Delhi NCR", "Uttar Pradesh"),
-    "greater noida": ("Delhi NCR", "Uttar Pradesh"),
-    "ghaziabad": ("Delhi NCR", "Uttar Pradesh"),
-    "faridabad": ("Delhi NCR", "Haryana"),
-    "manesar": ("Gurugram", "Haryana"),
+# Specific Suburbs, Historical Names, Tech Hubs & Aliases -> (Canonical City, State, Metro)
+SPECIAL_ALIASES: dict[str, tuple[str, str, str | None]] = {
+    # Karnataka / Bengaluru
+    "bangalore": ("Bengaluru", "Karnataka", None),
+    "bengaluru": ("Bengaluru", "Karnataka", None),
+    "bangaluru": ("Bengaluru", "Karnataka", None),
+    "bangalore urban": ("Bengaluru", "Karnataka", None),
+    "bangalore rural": ("Bengaluru", "Karnataka", None),
+    "greater bengaluru area": ("Bengaluru", "Karnataka", None),
+    "greater bangalore": ("Bengaluru", "Karnataka", None),
+    "whitefield": ("Bengaluru", "Karnataka", None),
+    "electronic city": ("Bengaluru", "Karnataka", None),
+    "koramangala": ("Bengaluru", "Karnataka", None),
+    "indiranagar": ("Bengaluru", "Karnataka", None),
+    "bellandur": ("Bengaluru", "Karnataka", None),
+    "marathahalli": ("Bengaluru", "Karnataka", None),
+    "manyata": ("Bengaluru", "Karnataka", None),
+    "hebbal": ("Bengaluru", "Karnataka", None),
+    "hsr layout": ("Bengaluru", "Karnataka", None),
+    "mysore": ("Mysuru", "Karnataka", None),
+    "mangalore": ("Mangaluru", "Karnataka", None),
+    "hubli": ("Hubballi", "Karnataka", None),
+    "belgaum": ("Belagavi", "Karnataka", None),
 
-    # Maharashtra
-    "mumbai": ("Mumbai", "Maharashtra"),
-    "bombay": ("Mumbai", "Maharashtra"),
-    "navi mumbai": ("Navi Mumbai", "Maharashtra"),
-    "thane": ("Thane", "Maharashtra"),
-    "bkc": ("Mumbai", "Maharashtra"),
-    "andheri": ("Mumbai", "Maharashtra"),
-    "powai": ("Mumbai", "Maharashtra"),
-    "goregaon": ("Mumbai", "Maharashtra"),
-    "pune": ("Pune", "Maharashtra"),
-    "poona": ("Pune", "Maharashtra"),
-    "hinjewadi": ("Pune", "Maharashtra"),
-    "hinjawadi": ("Pune", "Maharashtra"),
-    "magarpatta": ("Pune", "Maharashtra"),
-    "kharadi": ("Pune", "Maharashtra"),
-    "baner": ("Pune", "Maharashtra"),
-    "wakad": ("Pune", "Maharashtra"),
-    "pcmc": ("Pune", "Maharashtra"),
-    "nagpur": ("Nagpur", "Maharashtra"),
-    "nashik": ("Nashik", "Maharashtra"),
+    # NCR / North
+    "delhi": ("Delhi", "Delhi", "Delhi NCR"),
+    "new delhi": ("New Delhi", "Delhi", "Delhi NCR"),
+    "gurgaon": ("Gurugram", "Haryana", "Delhi NCR"),
+    "gurugram": ("Gurugram", "Haryana", "Delhi NCR"),
+    "manesar": ("Manesar", "Haryana", "Delhi NCR"),
+    "noida": ("Noida", "Uttar Pradesh", "Delhi NCR"),
+    "greater noida": ("Greater Noida", "Uttar Pradesh", "Delhi NCR"),
+    "ghaziabad": ("Ghaziabad", "Uttar Pradesh", "Delhi NCR"),
+    "faridabad": ("Faridabad", "Haryana", "Delhi NCR"),
+    "sonipat": ("Sonipat", "Haryana", "Delhi NCR"),
 
-    # Telangana & AP
-    "hyderabad": ("Hyderabad", "Telangana"),
-    "secunderabad": ("Hyderabad", "Telangana"),
-    "cyberabad": ("Hyderabad", "Telangana"),
-    "hitec city": ("Hyderabad", "Telangana"),
-    "hitech city": ("Hyderabad", "Telangana"),
-    "gachibowli": ("Hyderabad", "Telangana"),
-    "madhapur": ("Hyderabad", "Telangana"),
-    "kondapur": ("Hyderabad", "Telangana"),
-    "vizag": ("Visakhapatnam", "Andhra Pradesh"),
-    "visakhapatnam": ("Visakhapatnam", "Andhra Pradesh"),
+    # Maharashtra / Mumbai / Pune
+    "mumbai": ("Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "bombay": ("Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "navi mumbai": ("Navi Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "thane": ("Thane", "Maharashtra", "Mumbai Metropolitan Region"),
+    "kalyan": ("Kalyan", "Maharashtra", "Mumbai Metropolitan Region"),
+    "bkc": ("Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "andheri": ("Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "powai": ("Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "goregaon": ("Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "lower parel": ("Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "malad": ("Mumbai", "Maharashtra", "Mumbai Metropolitan Region"),
+    "pune": ("Pune", "Maharashtra", None),
+    "poona": ("Pune", "Maharashtra", None),
+    "pcmc": ("Pimpri-Chinchwad", "Maharashtra", None),
+    "pimpri chinchwad": ("Pimpri-Chinchwad", "Maharashtra", None),
+    "hinjewadi": ("Pune", "Maharashtra", None),
+    "hinjawadi": ("Pune", "Maharashtra", None),
+    "magarpatta": ("Pune", "Maharashtra", None),
+    "kharadi": ("Pune", "Maharashtra", None),
+    "baner": ("Pune", "Maharashtra", None),
+    "wakad": ("Pune", "Maharashtra", None),
+    "viman nagar": ("Pune", "Maharashtra", None),
+    "nagpur": ("Nagpur", "Maharashtra", None),
+    "nashik": ("Nashik", "Maharashtra", None),
 
-    # Tamil Nadu
-    "chennai": ("Chennai", "Tamil Nadu"),
-    "madras": ("Chennai", "Tamil Nadu"),
-    "omr": ("Chennai", "Tamil Nadu"),
-    "guindy": ("Chennai", "Tamil Nadu"),
-    "tidel park": ("Chennai", "Tamil Nadu"),
-    "coimbatore": ("Coimbatore", "Tamil Nadu"),
+    # Telangana & AP / Hyderabad
+    "hyderabad": ("Hyderabad", "Telangana", None),
+    "secunderabad": ("Secunderabad", "Telangana", None),
+    "cyberabad": ("Hyderabad", "Telangana", None),
+    "hitec city": ("Hyderabad", "Telangana", None),
+    "hitech city": ("Hyderabad", "Telangana", None),
+    "gachibowli": ("Hyderabad", "Telangana", None),
+    "madhapur": ("Hyderabad", "Telangana", None),
+    "kondapur": ("Hyderabad", "Telangana", None),
+    "kukatpally": ("Hyderabad", "Telangana", None),
+    "vizag": ("Visakhapatnam", "Andhra Pradesh", None),
+    "visakhapatnam": ("Visakhapatnam", "Andhra Pradesh", None),
 
-    # West Bengal
-    "kolkata": ("Kolkata", "West Bengal"),
-    "calcutta": ("Kolkata", "West Bengal"),
-    "salt lake": ("Kolkata", "West Bengal"),
-    "salt lake city": ("Kolkata", "West Bengal"),
-    "sector v": ("Kolkata", "West Bengal"),
-    "new town": ("Kolkata", "West Bengal"),
-    "rajarhat": ("Kolkata", "West Bengal"),
+    # Tamil Nadu / Chennai
+    "chennai": ("Chennai", "Tamil Nadu", None),
+    "madras": ("Chennai", "Tamil Nadu", None),
+    "greater chennai": ("Chennai", "Tamil Nadu", None),
+    "omr": ("Chennai", "Tamil Nadu", None),
+    "guindy": ("Chennai", "Tamil Nadu", None),
+    "tidel park": ("Chennai", "Tamil Nadu", None),
+    "sholinganallur": ("Chennai", "Tamil Nadu", None),
+    "velachery": ("Chennai", "Tamil Nadu", None),
+    "coimbatore": ("Coimbatore", "Tamil Nadu", None),
+
+    # West Bengal / Kolkata
+    "kolkata": ("Kolkata", "West Bengal", None),
+    "calcutta": ("Kolkata", "West Bengal", None),
+    "salt lake": ("Kolkata", "West Bengal", None),
+    "salt lake city": ("Kolkata", "West Bengal", None),
+    "sector v": ("Kolkata", "West Bengal", None),
+    "new town": ("Kolkata", "West Bengal", None),
+    "rajarhat": ("Kolkata", "West Bengal", None),
+    "bidhannagar": ("Kolkata", "West Bengal", None),
 
     # Kerala
-    "kochi": ("Kochi", "Kerala"),
-    "cochin": ("Kochi", "Kerala"),
-    "ernakulam": ("Kochi", "Kerala"),
-    "infopark": ("Kochi", "Kerala"),
-    "thiruvananthapuram": ("Thiruvananthapuram", "Kerala"),
-    "trivandrum": ("Thiruvananthapuram", "Kerala"),
-    "technopark": ("Thiruvananthapuram", "Kerala"),
-    "calicut": ("Kozhikode", "Kerala"),
-    "kozhikode": ("Kozhikode", "Kerala"),
+    "kochi": ("Kochi", "Kerala", "Kerala Tech Corridor"),
+    "cochin": ("Kochi", "Kerala", "Kerala Tech Corridor"),
+    "ernakulam": ("Kochi", "Kerala", "Kerala Tech Corridor"),
+    "infopark": ("Kochi", "Kerala", "Kerala Tech Corridor"),
+    "thiruvananthapuram": ("Thiruvananthapuram", "Kerala", "Kerala Tech Corridor"),
+    "trivandrum": ("Thiruvananthapuram", "Kerala", "Kerala Tech Corridor"),
+    "technopark": ("Thiruvananthapuram", "Kerala", "Kerala Tech Corridor"),
+    "technocity": ("Thiruvananthapuram", "Kerala", "Kerala Tech Corridor"),
+    "calicut": ("Kozhikode", "Kerala", "Kerala Tech Corridor"),
+    "kozhikode": ("Kozhikode", "Kerala", "Kerala Tech Corridor"),
+    "cyberpark": ("Kozhikode", "Kerala", "Kerala Tech Corridor"),
 
     # Gujarat
-    "ahmedabad": ("Ahmedabad", "Gujarat"),
-    "amdavad": ("Ahmedabad", "Gujarat"),
-    "gandhinagar": ("Gandhinagar", "Gujarat"),
-    "gift city": ("Gandhinagar", "Gujarat"),
-    "baroda": ("Vadodara", "Gujarat"),
-    "vadodara": ("Vadodara", "Gujarat"),
+    "ahmedabad": ("Ahmedabad", "Gujarat", "Gujarat Tech Corridor"),
+    "amdavad": ("Ahmedabad", "Gujarat", "Gujarat Tech Corridor"),
+    "gandhinagar": ("Gandhinagar", "Gujarat", "Gujarat Tech Corridor"),
+    "gift city": ("Gandhinagar", "Gujarat", "Gujarat Tech Corridor"),
+    "baroda": ("Vadodara", "Gujarat", "Gujarat Tech Corridor"),
+    "vadodara": ("Vadodara", "Gujarat", "Gujarat Tech Corridor"),
+    "surat": ("Surat", "Gujarat", "Gujarat Tech Corridor"),
+    "rajkot": ("Rajkot", "Gujarat", "Gujarat Tech Corridor"),
 
     # Tricity
-    "chandigarh": ("Chandigarh", "Chandigarh"),
-    "mohali": ("Mohali", "Punjab"),
-    "panchkula": ("Panchkula", "Haryana"),
+    "chandigarh": ("Chandigarh", "Chandigarh", "Tricity (Chandigarh)"),
+    "mohali": ("Mohali", "Punjab", "Tricity (Chandigarh)"),
+    "sas nagar": ("Mohali", "Punjab", "Tricity (Chandigarh)"),
+    "panchkula": ("Panchkula", "Haryana", "Tricity (Chandigarh)"),
 }
 
 CANONICAL_CITY_LOOKUP.update(SPECIAL_ALIASES)
 
 
+def resolve_single_location(token: str) -> LocationEntity:
+    """
+    Standardize a single location token into a structured canonical LocationEntity.
+    """
+    if not token or not token.strip():
+        return LocationEntity(name="Unknown", type=LocationEntityType.UNKNOWN, raw_input="")
+
+    raw_clean = token.strip()
+    lower = raw_clean.lower()
+
+    # 1. Remote checks
+    if any(k in lower for k in ["remote", "work from home", "wfh", "telecommute", "anywhere in india"]):
+        if "india" in lower or "anywhere" in lower:
+            return LocationEntity(
+                name="Remote (India)",
+                type=LocationEntityType.REMOTE,
+                is_remote=True,
+                raw_input=raw_clean,
+            )
+        return LocationEntity(
+            name="Remote",
+            type=LocationEntityType.REMOTE,
+            is_remote=True,
+            raw_input=raw_clean,
+        )
+
+    # 2. State codes check (e.g. KA -> Karnataka)
+    upper = raw_clean.upper()
+    if upper in STATE_CODES:
+        state_full = STATE_CODES[upper]
+        return LocationEntity(
+            name=state_full,
+            type=LocationEntityType.STATE,
+            state_or_ut=state_full,
+            raw_input=raw_clean,
+        )
+
+    # 3. Airport IATA code check (e.g. BLR -> Bengaluru)
+    if upper in AIRPORT_CODES:
+        city, state, metro = AIRPORT_CODES[upper]
+        return LocationEntity(
+            name=city,
+            type=LocationEntityType.CITY,
+            state_or_ut=state,
+            metro=metro,
+            raw_input=raw_clean,
+        )
+
+    # 4. Explicit Metro Cluster alias match (e.g. "delhi ncr", "ncr")
+    for cluster_key, cluster_info in METRO_CLUSTERS.items():
+        if lower == cluster_key.lower() or any(lower == a.lower() for a in cluster_info["aliases"]):
+            return LocationEntity(
+                name=cluster_info["canonical"],
+                type=LocationEntityType.METRO,
+                state_or_ut=cluster_info["state_or_ut"],
+                metro=cluster_info["canonical"],
+                raw_input=raw_clean,
+            )
+
+    # 5. Full State or UT match
+    for state in INDIAN_STATES + INDIAN_UNION_TERRITORIES:
+        if lower == state.lower():
+            return LocationEntity(
+                name=state,
+                type=LocationEntityType.STATE,
+                state_or_ut=state,
+                raw_input=raw_clean,
+            )
+
+    # 6. City / Suburb alias exact match or bounded token match
+    for alias in sorted(CANONICAL_CITY_LOOKUP.keys(), key=len, reverse=True):
+        if alias == lower or f", {alias}" in lower or f"{alias}," in lower or f" {alias} " in f" {lower} ":
+            city, state, metro = CANONICAL_CITY_LOOKUP[alias]
+            return LocationEntity(
+                name=city,
+                type=LocationEntityType.CITY,
+                state_or_ut=state,
+                metro=metro,
+                raw_input=raw_clean,
+            )
+
+    # 7. Substring check for State/UT (e.g., "Mysuru, Karnataka" or "Karnataka, India")
+    for state in sorted(INDIAN_STATES + INDIAN_UNION_TERRITORIES, key=len, reverse=True):
+        if state.lower() in lower:
+            parts = [p.strip() for p in raw_clean.split(",") if p.strip()]
+            city_candidate = parts[0]
+            if city_candidate.lower() == state.lower():
+                return LocationEntity(
+                    name=state,
+                    type=LocationEntityType.STATE,
+                    state_or_ut=state,
+                    raw_input=raw_clean,
+                )
+            # Try resolving candidate city
+            if city_candidate.lower() in CANONICAL_CITY_LOOKUP:
+                city, s_name, metro = CANONICAL_CITY_LOOKUP[city_candidate.lower()]
+                return LocationEntity(
+                    name=city,
+                    type=LocationEntityType.CITY,
+                    state_or_ut=s_name,
+                    metro=metro,
+                    raw_input=raw_clean,
+                )
+            return LocationEntity(
+                name=city_candidate.title(),
+                type=LocationEntityType.CITY,
+                state_or_ut=state,
+                raw_input=raw_clean,
+            )
+
+    # 8. Country match
+    if lower in ["india", "pan india", "across india", "pan-india"]:
+        return LocationEntity(
+            name="India",
+            type=LocationEntityType.COUNTRY,
+            country="India",
+            raw_input=raw_clean,
+        )
+
+    first_token = raw_clean.split(",")[0].strip()
+    return LocationEntity(
+        name=first_token.title() if first_token else "Unknown",
+        type=LocationEntityType.UNKNOWN,
+        raw_input=raw_clean,
+    )
+
+
+def parse_location_entities(raw_location: str | None) -> list[LocationEntity]:
+    """
+    Parses a location string into one or more canonical LocationEntity objects.
+    Deterministically handles multi-location patterns like:
+    - "Bengaluru / Hyderabad"
+    - "Pune | Mumbai"
+    - "Delhi NCR / Remote"
+    - "Gurugram or Noida"
+    - "Bengaluru, Hyderabad, Chennai"
+    """
+    if not raw_location or not raw_location.strip():
+        return [LocationEntity(name="Unknown", type=LocationEntityType.UNKNOWN, raw_input="")]
+
+    raw = raw_location.strip()
+
+    # Split on primary delimiters: '/', '|', ';', or ' or '
+    tokens = re.split(r"\s*(?:\/|\||;|\bor\b)\s*", raw, flags=re.IGNORECASE)
+
+    final_tokens: list[str] = []
+    for t in tokens:
+        t_clean = t.strip()
+        if not t_clean:
+            continue
+        if "," in t_clean:
+            comma_parts = [p.strip() for p in t_clean.split(",") if p.strip()]
+            is_single_qualified = False
+            if len(comma_parts) == 2:
+                p2_low = comma_parts[1].lower()
+                all_states_low = {s.lower() for s in INDIAN_STATES + INDIAN_UNION_TERRITORIES}
+                all_codes_low = {c.lower() for c in STATE_CODES.keys()}
+                if p2_low in all_states_low or p2_low in all_codes_low or p2_low in {"india", "in"}:
+                    is_single_qualified = True
+
+            if is_single_qualified:
+                final_tokens.append(t_clean)
+            else:
+                final_tokens.extend(comma_parts)
+        else:
+            final_tokens.append(t_clean)
+
+    entities: list[LocationEntity] = []
+    seen_names = set()
+
+    for tok in final_tokens:
+        entity = resolve_single_location(tok)
+        if entity.name not in seen_names and entity.name != "Unknown":
+            seen_names.add(entity.name)
+            entities.append(entity)
+
+    return entities if entities else [LocationEntity(name="Unknown", type=LocationEntityType.UNKNOWN, raw_input=raw)]
+
+
+def normalize_location_string(raw_location: str | None) -> str:
+    """
+    Canonical string representation of location(s), deterministic and consistent.
+    Multi-location jobs are formatted as 'City1 / City2'.
+    """
+    entities = parse_location_entities(raw_location)
+    names = [e.name for e in entities if e.name != "Unknown"]
+    return " / ".join(names) if names else "Unknown"
+
+
+# Backward-compatible alias for existing imports
 @dataclass
 class ResolvedLocation:
     canonical_name: str
@@ -371,93 +557,28 @@ class ResolvedLocation:
 
 def resolve_canonical_location(raw_location: str | None) -> ResolvedLocation:
     """
-    Standardize raw location string into canonical Indian location entity.
-    Returns ResolvedLocation with city/state metadata.
+    Legacy wrapper returning ResolvedLocation.
+    Uses first parsed LocationEntity.
     """
-    if not raw_location or not raw_location.strip():
-        return ResolvedLocation(canonical_name="Unknown", raw_input="")
-
-    raw_clean = raw_location.strip()
-    lower = raw_clean.lower()
-
-    if any(k in lower for k in ["remote", "work from home", "wfh", "telecommute", "anywhere in india"]):
-        if "india" in lower or "anywhere" in lower:
-            return ResolvedLocation(canonical_name="Remote (India)", is_remote=True, raw_input=raw_clean)
-        return ResolvedLocation(canonical_name="Remote", is_remote=True, raw_input=raw_clean)
-
-    if raw_clean.upper() in STATE_CODES:
-        state_full = STATE_CODES[raw_clean.upper()]
-        return ResolvedLocation(
-            canonical_name=state_full,
-            state_or_ut=state_full,
-            is_state_level=True,
-            raw_input=raw_clean,
-        )
-
-    if raw_clean.upper() in AIRPORT_CODES:
-        city, state = AIRPORT_CODES[raw_clean.upper()]
-        return ResolvedLocation(
-            canonical_name=city,
-            state_or_ut=state,
-            is_metro=False,
-            raw_input=raw_clean,
-        )
-
-    for state in INDIAN_STATES + INDIAN_UNION_TERRITORIES:
-        if lower == state.lower():
-            return ResolvedLocation(
-                canonical_name=state,
-                state_or_ut=state,
-                is_state_level=True,
-                raw_input=raw_clean,
-            )
-
-    # 1. Exact / Suburb City match takes precedence (e.g. "gurgaon" -> Gurugram, "noida" -> Noida, "bengaluru" -> Bengaluru)
-    for alias in sorted(CANONICAL_CITY_LOOKUP.keys(), key=len, reverse=True):
-        if alias == lower or f", {alias}" in lower or f"{alias}," in lower or f" {alias} " in f" {lower} ":
-            city, state = CANONICAL_CITY_LOOKUP[alias]
-            return ResolvedLocation(
-                canonical_name=city,
-                state_or_ut=state,
-                is_metro=False,
-                raw_input=raw_clean,
-            )
-
-    # 2. Broad Metro Cluster alias match
-    for cluster_key, cluster_info in METRO_CLUSTERS.items():
-        for alias in sorted(cluster_info["aliases"], key=len, reverse=True):
-            if alias == lower or f", {alias}" in lower or f"{alias}," in lower or f" {alias} " in f" {lower} ":
-                return ResolvedLocation(
-                    canonical_name=cluster_info["canonical"],
-                    state_or_ut=cluster_info["state_or_ut"],
-                    is_metro=True,
-                    raw_input=raw_clean,
-                )
-
-    for state in sorted(INDIAN_STATES + INDIAN_UNION_TERRITORIES, key=len, reverse=True):
-        if state.lower() in lower:
-            parts = [p.strip() for p in raw_clean.split(",") if p.strip()]
-            city_candidate = parts[0] if parts else state
-            return ResolvedLocation(
-                canonical_name=city_candidate.title(),
-                state_or_ut=state,
-                is_state_level=False,
-                raw_input=raw_clean,
-            )
-
-    if lower in ["india", "pan india"]:
-        return ResolvedLocation(canonical_name="India", raw_input=raw_clean)
-
-    first_token = raw_clean.split(",")[0].strip()
-    return ResolvedLocation(canonical_name=first_token.title(), raw_input=raw_clean)
+    entities = parse_location_entities(raw_location)
+    primary = entities[0]
+    return ResolvedLocation(
+        canonical_name=primary.name,
+        state_or_ut=primary.state_or_ut,
+        is_remote=primary.is_remote,
+        is_metro=(primary.type == LocationEntityType.METRO),
+        is_state_level=(primary.type == LocationEntityType.STATE),
+        raw_input=primary.raw_input or (raw_location or ""),
+    )
 
 
 def expand_location_query(locations: list[str] | None) -> set[str]:
     """
-    Expands a list of query location strings to include:
-    - All child cities if a State or UT was requested.
-    - All cluster aliases/cities if a Metro Cluster was requested.
-    - Synonyms and aliases for individual cities.
+    Expands a list of query location strings to canonical names and child tokens:
+    - State/UT expands to all its child cities
+    - Metro expands to all its member cities
+    - City expands to itself and known aliases
+    - Remote expands to remote equivalents
     """
     if not locations:
         return set()
@@ -465,61 +586,142 @@ def expand_location_query(locations: list[str] | None) -> set[str]:
     expanded: set[str] = set()
 
     for loc in locations:
-        loc_str = loc.strip()
-        if not loc_str:
+        if not loc or not loc.strip():
             continue
-        loc_lower = loc_str.lower()
-        expanded.add(loc_lower)
+        entities = parse_location_entities(loc)
+        for ent in entities:
+            name_low = ent.name.lower()
+            expanded.add(name_low)
 
-        # State / UT Expansion
-        for state_name, cities in STATE_CITIES_MAP.items():
-            if loc_lower == state_name.lower():
-                expanded.add(state_name.lower())
-                for c in cities:
-                    expanded.add(c.lower())
-
-        # Metro Cluster Expansion (expand downward only when user asks for the cluster)
-        for cluster_info in METRO_CLUSTERS.values():
-            is_cluster_request = (
-                loc_lower == cluster_info["canonical"].lower()
-                or loc_lower in [a.lower() for a in cluster_info["aliases"]]
-            )
-            if is_cluster_request:
-                for alias in cluster_info["aliases"]:
-                    expanded.add(alias.lower())
-                for city in cluster_info["cities"]:
+            if ent.type == LocationEntityType.STATE or ent.name in STATE_CITIES_MAP:
+                expanded.add(name_low)
+                for city in STATE_CITIES_MAP.get(ent.name, []):
                     expanded.add(city.lower())
 
-        # Remote / WFH expansion
-        if any(r in loc_lower for r in ["remote", "work from home", "wfh", "telecommute"]):
-            for r_alias in ["remote", "work from home", "wfh", "telecommute", "anywhere in india", "remote (india)"]:
-                expanded.add(r_alias)
+            if ent.type == LocationEntityType.METRO or ent.name in METRO_CLUSTERS:
+                cluster_info = METRO_CLUSTERS.get(ent.name)
+                if cluster_info:
+                    for a in cluster_info["aliases"]:
+                        expanded.add(a.lower())
+                    for c in cluster_info["cities"]:
+                        expanded.add(c.lower())
 
-        # Individual City alias expansion
-        if loc_lower in CANONICAL_CITY_LOOKUP:
-            canonical_city, parent_state = CANONICAL_CITY_LOOKUP[loc_lower]
-            expanded.add(canonical_city.lower())
-            for alias, (c_city, _) in CANONICAL_CITY_LOOKUP.items():
-                if c_city.lower() == canonical_city.lower():
-                    expanded.add(alias.lower())
+            if ent.is_remote:
+                for r in ["remote", "work from home", "wfh", "telecommute", "anywhere in india", "remote (india)"]:
+                    expanded.add(r)
+
+            if ent.type == LocationEntityType.CITY:
+                for alias, (c_city, _, _) in CANONICAL_CITY_LOOKUP.items():
+                    if c_city.lower() == name_low:
+                        expanded.add(alias.lower())
 
     return expanded
 
 
+def match_location_criteria(
+    job_normalized_location: str | None,
+    job_raw_location: str | None,
+    filter_locations: list[str] | None,
+    job_remote_type: str | None = None,
+) -> bool:
+    """
+    Authoritative canonical matcher: returns True if job matches any filter criteria.
+    Operates on canonical entities, supporting:
+    - Canonical city equality
+    - Metro expansion (filtering by 'Delhi NCR' matches 'Noida' or 'Gurugram')
+    - State expansion (filtering by 'Karnataka' matches 'Bengaluru' or 'Mysuru')
+    - Remote matching
+    - Multi-location jobs (matches if ANY constituent city matches)
+    """
+    if not filter_locations:
+        return True
+
+    target_cities: set[str] = set()
+    target_metros: set[str] = set()
+    target_states: set[str] = set()
+    target_remote: bool = False
+    target_country: bool = False
+
+    for f_loc in filter_locations:
+        if not f_loc or not f_loc.strip():
+            continue
+        for ent in parse_location_entities(f_loc):
+            if ent.is_remote:
+                target_remote = True
+            elif ent.type == LocationEntityType.METRO:
+                target_metros.add(ent.name)
+                if ent.name in METRO_CLUSTERS:
+                    for c in METRO_CLUSTERS[ent.name]["cities"]:
+                        target_cities.add(c.lower())
+            elif ent.type == LocationEntityType.STATE:
+                target_states.add(ent.name)
+                if ent.name in STATE_CITIES_MAP:
+                    for c in STATE_CITIES_MAP[ent.name]:
+                        target_cities.add(c.lower())
+            elif ent.type == LocationEntityType.CITY:
+                target_cities.add(ent.name.lower())
+            elif ent.type == LocationEntityType.COUNTRY:
+                target_country = True
+            else:
+                target_cities.add(ent.name.lower())
+
+    is_remote_job = (
+        (job_remote_type or "").upper() == "REMOTE"
+        or (job_normalized_location and "remote" in job_normalized_location.lower())
+        or (job_raw_location and any(r in job_raw_location.lower() for r in ["remote", "wfh", "work from home"]))
+    )
+    if target_remote and is_remote_job:
+        return True
+
+    loc_source = job_normalized_location or job_raw_location or ""
+    job_entities = parse_location_entities(loc_source)
+
+    for j_ent in job_entities:
+        j_name_low = j_ent.name.lower()
+
+        if j_ent.is_remote and target_remote:
+            return True
+
+        if target_country and j_ent.country == "India":
+            return True
+
+        if j_name_low in target_cities:
+            return True
+
+        if j_ent.type == LocationEntityType.METRO and j_ent.name in target_metros:
+            return True
+
+        if j_ent.metro and j_ent.metro in target_metros:
+            return True
+
+        if j_ent.state_or_ut and j_ent.state_or_ut in target_states:
+            return True
+
+        if j_ent.type == LocationEntityType.STATE and j_ent.name in target_states:
+            return True
+
+    return False
+
+
 def get_taxonomy_tree() -> dict[str, Any]:
+    """
+    Returns canonical tree for UI navigation and filter dropdowns.
+    """
     top_hubs = [
-        {"name": "Bengaluru", "state": "Karnataka", "popular": True},
-        {"name": "Delhi NCR", "state": "Delhi", "popular": True},
-        {"name": "Mumbai", "state": "Maharashtra", "popular": True},
-        {"name": "Hyderabad", "state": "Telangana", "popular": True},
-        {"name": "Pune", "state": "Maharashtra", "popular": True},
-        {"name": "Chennai", "state": "Tamil Nadu", "popular": True},
-        {"name": "Kolkata", "state": "West Bengal", "popular": True},
-        {"name": "Chandigarh", "state": "Chandigarh", "popular": False},
-        {"name": "Ahmedabad", "state": "Gujarat", "popular": False},
-        {"name": "Kochi", "state": "Kerala", "popular": False},
-        {"name": "Jaipur", "state": "Rajasthan", "popular": False},
-        {"name": "Indore", "state": "Madhya Pradesh", "popular": False},
+        {"name": "Bengaluru", "state": "Karnataka", "popular": True, "type": "CITY"},
+        {"name": "Delhi NCR", "state": "Delhi", "popular": True, "type": "METRO"},
+        {"name": "Mumbai", "state": "Maharashtra", "popular": True, "type": "CITY"},
+        {"name": "Hyderabad", "state": "Telangana", "popular": True, "type": "CITY"},
+        {"name": "Pune", "state": "Maharashtra", "popular": True, "type": "CITY"},
+        {"name": "Chennai", "state": "Tamil Nadu", "popular": True, "type": "CITY"},
+        {"name": "Kolkata", "state": "West Bengal", "popular": True, "type": "CITY"},
+        {"name": "Gurugram", "state": "Haryana", "popular": True, "type": "CITY"},
+        {"name": "Noida", "state": "Uttar Pradesh", "popular": True, "type": "CITY"},
+        {"name": "Chandigarh", "state": "Chandigarh", "popular": False, "type": "CITY"},
+        {"name": "Ahmedabad", "state": "Gujarat", "popular": False, "type": "CITY"},
+        {"name": "Kochi", "state": "Kerala", "popular": False, "type": "CITY"},
+        {"name": "Jaipur", "state": "Rajasthan", "popular": False, "type": "CITY"},
+        {"name": "Indore", "state": "Madhya Pradesh", "popular": False, "type": "CITY"},
     ]
 
     states_tree = []
@@ -531,8 +733,17 @@ def get_taxonomy_tree() -> dict[str, Any]:
             "cities": sorted(cities),
         })
 
+    metro_list = []
+    for m_name, m_data in METRO_CLUSTERS.items():
+        metro_list.append({
+            "name": m_name,
+            "state_or_ut": m_data["state_or_ut"],
+            "cities": sorted(m_data["cities"]),
+        })
+
     return {
         "top_hubs": top_hubs,
+        "metros": metro_list,
         "states": states_tree,
         "remote_options": ["Remote", "Remote (India)"],
     }

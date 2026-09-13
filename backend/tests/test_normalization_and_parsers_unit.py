@@ -49,7 +49,7 @@ def test_normalize_location_indian_cities():
     assert normalize_location("bangalore") == "Bengaluru"
     assert normalize_location("gurgaon") == "Gurugram"
     assert normalize_location("bombay") == "Mumbai"
-    assert normalize_location("noida") == "Delhi NCR"
+    assert normalize_location("noida") == "Noida"
 
 
 def test_salary_parsing():

@@ -127,35 +127,8 @@ CANONICAL_SKILLS: dict[str, str] = {
     "llamaindex": "LlamaIndex",
     "scikit-learn": "scikit-learn",
     "sklearn": "scikit-learn",
-    "huggingface": "Hugging Face",
-    "hugging face": "Hugging Face",
     "prompt engineering": "Prompt Engineering",
     "vector search": "Vector Search",
-}
-
-CANONICAL_LOCATIONS: dict[str, str] = {
-    "bangalore": "Bengaluru",
-    "bengaluru": "Bengaluru",
-    "bangaluru": "Bengaluru",
-    "gurgaon": "Gurugram",
-    "gurugram": "Gurugram",
-    "delhi": "Delhi NCR",
-    "delhi ncr": "Delhi NCR",
-    "new delhi": "Delhi NCR",
-    "noida": "Delhi NCR",
-    "greater noida": "Delhi NCR",
-    "mumbai": "Mumbai",
-    "bombay": "Mumbai",
-    "hyderabad": "Hyderabad",
-    "pune": "Pune",
-    "chennai": "Chennai",
-    "madras": "Chennai",
-    "kolkata": "Kolkata",
-    "calcutta": "Kolkata",
-    "remote": "Remote",
-    "india": "India",
-    "remote - india": "Remote (India)",
-    "work from home": "Remote",
 }
 
 
@@ -290,28 +263,8 @@ def extract_skills_from_text(
 
 def normalize_location(location: str | None) -> str:
     """Normalize Indian location names to standard forms (e.g. Bengaluru)."""
-    if not location:
-        return "Unknown"
-    cleaned = location.strip()
-    if not cleaned:
-        return "Unknown"
-
-    # Multi-location separator support (e.g. "Bengaluru / Hyderabad", "Pune, Mumbai")
-    if "/" in cleaned:
-        parts = [p.strip() for p in cleaned.split("/") if p.strip()]
-        resolved_parts = [normalize_location(p) for p in parts]
-        # Deduplicate preserving order
-        seen = set()
-        deduped = []
-        for r in resolved_parts:
-            if r not in seen and r != "Unknown":
-                seen.add(r)
-                deduped.append(r)
-        return " / ".join(deduped) if deduped else "Unknown"
-
-    from app.core.location_taxonomy import resolve_canonical_location
-    resolved = resolve_canonical_location(cleaned)
-    return resolved.canonical_name
+    from app.core.location_taxonomy import normalize_location_string
+    return normalize_location_string(location)
 
 
 def is_unpaid_salary_text(text: str | None) -> bool:

@@ -161,28 +161,14 @@ async def search_jobs_db(
             if not matches_target_role(job.title, roles, job.role_category):
                 continue
 
-        if locs_lower:
-            from app.core.location_taxonomy import expand_location_query
-            user_requested_remote = any(
-                r in loc for loc in locs_lower for r in ["remote", "work from home", "wfh", "telecommute"]
-            )
-            is_remote_match = (
-                job.remote_type == "REMOTE"
-                or any(r in (job.location or "").lower() for r in ["work from home", "remote", "wfh"])
-            ) and user_requested_remote
-
-            job_loc_l = (job.location or "").lower()
-            job_norm_l = (job.normalized_location or "").lower()
-
-            # Expand queried locations (includes state child cities, metro cluster cities, and aliases)
-            expanded_search_tokens = expand_location_query(locations)
-
-            loc_match = is_remote_match or any(
-                _matches_location_token(token, job_loc_l) or _matches_location_token(token, job_norm_l)
-                for token in expanded_search_tokens
-            )
-
-            if not loc_match:
+        if locations:
+            from app.core.location_taxonomy import match_location_criteria
+            if not match_location_criteria(
+                job_normalized_location=job.normalized_location,
+                job_raw_location=job.location,
+                filter_locations=locations,
+                job_remote_type=job.remote_type,
+            ):
                 continue
 
         filtered.append(job)
@@ -577,29 +563,17 @@ async def get_job_facets_db(
     query_lower = query.lower().strip() if query and query.strip() else None
     locs_lower = [loc.lower() for loc in locations] if locations else []
 
-    from app.core.location_taxonomy import expand_location_query, resolve_canonical_location
-    expanded_facet_locations = expand_location_query(locations)
-
-    user_requested_remote_facets = any(
-        r in loc for loc in locs_lower for r in ["remote", "work from home", "wfh", "telecommute"]
-    )
+    from app.core.location_taxonomy import match_location_criteria, parse_location_entities
 
     def matches_location(job: Job) -> bool:
-        if not locs_lower:
+        if not locations:
             return True
-        is_remote_job = (
-            job.remote_type == "REMOTE"
-            or any(r in (job.location or "").lower() for r in ["work from home", "remote", "wfh"])
+        return match_location_criteria(
+            job_normalized_location=job.normalized_location,
+            job_raw_location=job.location,
+            filter_locations=locations,
+            job_remote_type=job.remote_type,
         )
-        is_remote_match = is_remote_job and user_requested_remote_facets
-        job_loc_l = (job.location or "").lower()
-        job_norm_l = (job.normalized_location or "").lower()
-        if is_remote_match or any(
-            _matches_location_token(loc, job_loc_l) or _matches_location_token(loc, job_norm_l)
-            for loc in expanded_facet_locations
-        ):
-            return True
-        return False
 
     def matches_employment_type(job: Job) -> bool:
         if not employment_type or employment_type.upper() == "ALL":
@@ -642,10 +616,11 @@ async def get_job_facets_db(
             if query_lower not in haystack:
                 continue
 
-        # Location facet count aggregated by canonical form
-        canonical_loc = job.normalized_location or (job.location or "").strip()
-        if canonical_loc:
-            location_counts[canonical_loc] = location_counts.get(canonical_loc, 0) + 1
+        # Location facet count aggregated by canonical entity
+        entities = parse_location_entities(job.normalized_location or job.location)
+        for ent in entities:
+            if ent.name and ent.name != "Unknown":
+                location_counts[ent.name] = location_counts.get(ent.name, 0) + 1
 
         # Check if job satisfies current active location, employment_type, and experience filters
         loc_ok = matches_location(job)

@@ -404,37 +404,40 @@ class MatchingService:
         if (remote_type or "").upper() == "REMOTE" and remote_preference:
             return 100.0
 
-        pref_lower = [loc.strip().lower() for loc in (preferred_locations or []) if loc and loc.strip()]
-        job_loc_lower = (job_location or "").lower()
-        norm_loc_lower = (normalized_location or "").lower()
-
-        if not pref_lower:
+        if not preferred_locations:
             return 70.0  # Neutral baseline when no preferred locations specified
 
-        # Exact city or direct substring match
-        if any(p in job_loc_lower or p in norm_loc_lower for p in pref_lower):
+        from app.core.location_taxonomy import (
+            match_location_criteria,
+            parse_location_entities,
+        )
+
+        # 1. Authoritative canonical criteria match (city equality, metro cluster, or remote)
+        if match_location_criteria(
+            job_normalized_location=normalized_location,
+            job_raw_location=job_location,
+            filter_locations=preferred_locations,
+            job_remote_type=remote_type,
+        ):
             return 100.0
 
-        from app.core.location_taxonomy import expand_location_query, resolve_canonical_location
-        # Check if candidate preferred locations expand to include job location
-        expanded_prefs = expand_location_query(preferred_locations)
-        if any(token in job_loc_lower or token in norm_loc_lower for token in expanded_prefs):
-            return 95.0
+        # 2. Check same-state affinity (e.g. candidate prefers Bengaluru, job is in Mysuru/Karnataka)
+        job_entities = parse_location_entities(normalized_location or job_location)
+        pref_entities = [e for p in preferred_locations for e in parse_location_entities(p)]
 
-        # Check same state affinity (e.g. candidate wants Bengaluru/Karnataka, job is in Mysuru)
-        job_resolved = resolve_canonical_location(normalized_location or job_location)
-        if job_resolved.state_or_ut:
-            for p in preferred_locations:
-                p_resolved = resolve_canonical_location(p)
-                if p_resolved.state_or_ut and p_resolved.state_or_ut.lower() == job_resolved.state_or_ut.lower():
-                    return 80.0
+        job_states = {e.state_or_ut.lower() for e in job_entities if e.state_or_ut}
+        pref_states = {e.state_or_ut.lower() for e in pref_entities if e.state_or_ut}
+
+        if job_states and pref_states and (job_states & pref_states):
+            return 80.0
 
         if (remote_type or "").upper() == "HYBRID":
             return 60.0
 
         # Major Indian tech hubs baseline
-        major_hubs = {"bengaluru", "delhi ncr", "gurugram", "mumbai", "pune", "hyderabad", "chennai"}
-        if any(hub in norm_loc_lower for hub in major_hubs):
+        major_hubs = {"bengaluru", "delhi ncr", "delhi", "gurugram", "noida", "mumbai", "pune", "hyderabad", "chennai"}
+        job_city_names = {e.name.lower() for e in job_entities}
+        if job_city_names & major_hubs:
             return 65.0
 
         return 40.0
