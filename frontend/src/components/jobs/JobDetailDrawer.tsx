@@ -9,6 +9,7 @@ import {
   BookmarkCheck,
   Check,
   ThumbsDown,
+  Ban,
   Building2,
   Sparkles,
   AlertCircle,
@@ -77,6 +78,7 @@ interface JobDetailDrawerProps {
   onUnsave?: (job: JobDetailData) => void;
   onReject?: (job: JobDetailData) => void;
   onMarkApplied?: (job: JobDetailData) => void;
+  onBanCompany?: (company: string) => void;
 }
 
 export default function JobDetailDrawer({
@@ -87,6 +89,7 @@ export default function JobDetailDrawer({
   onUnsave,
   onReject,
   onMarkApplied,
+  onBanCompany,
 }: JobDetailDrawerProps) {
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -249,6 +252,20 @@ export default function JobDetailDrawer({
               >
                 <ThumbsDown className="w-3.5 h-3.5" />
                 <span>Not Interested</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (onBanCompany && job.company) {
+                    onBanCompany(job.company);
+                    onClose();
+                  }
+                }}
+                className="p-1.5 rounded-xl border border-white/[0.08] bg-obsidian-900 text-zinc-400 hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 text-xs font-semibold transition-all"
+                title={`Ban ${job.company} (Exclude all jobs from this company)`}
+                aria-label={`Ban ${job.company}`}
+              >
+                <Ban className="w-4 h-4" />
               </button>
             </div>
 

@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { SyncProgressModal } from "@/components/SyncProgressModal";
 import JobDetailDrawer from "@/components/jobs/JobDetailDrawer";
-import { loadUserPreferences } from "@/lib/preferences";
+import { loadUserPreferences, saveUserPreferences } from "@/lib/preferences";
 
 interface SkillPartition {
   matched: string[];
@@ -306,6 +306,14 @@ export default function JobsPage() {
   };
 
   useEffect(() => {
+    loadUserPreferences().then((prefs) => {
+      if (prefs.excluded_companies && prefs.excluded_companies.length > 0) {
+        setExcludedCompanies(prefs.excluded_companies);
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetchJobs(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceFilter, freshnessHours, sortBy, selectedLocations, experienceFilter, typeFilter]);
@@ -468,6 +476,49 @@ export default function JobsPage() {
       // Handle error
     }
 
+    if (remaining.length === 0 && newTotal > 0) {
+      const maxPages = Math.ceil(newTotal / pageSize);
+      const nextTargetPage = Math.min(currentPage, Math.max(1, maxPages));
+      fetchJobs(nextTargetPage);
+    }
+  };
+
+  const handleBanCompany = async (companyName: string) => {
+    const trimmed = (companyName || "").trim();
+    if (!trimmed) return;
+
+    // 1. Update excludedCompanies state immediately
+    const updated = Array.from(new Set([...excludedCompanies, trimmed]));
+    setExcludedCompanies(updated);
+
+    // 2. Remove all jobs from this company from current jobs list
+    const norm = trimmed.toLowerCase();
+    const remaining = jobs.filter((j) => {
+      const comp = (j.company ?? "").toLowerCase().trim();
+      return !(comp === norm || comp.includes(norm) || norm.includes(comp));
+    });
+    const removedCount = jobs.length - remaining.length;
+    setJobs(remaining);
+    const newTotal = Math.max(0, totalCount - removedCount);
+    setTotalCount(newTotal);
+
+    // 3. Show confirmation feedback
+    setPrefToast(`Banned "${trimmed}" & added to excluded companies.`);
+    setTimeout(() => setPrefToast(null), 4000);
+
+    // 4. Save to dual-layer persistence (localStorage + backend)
+    try {
+      const currentPrefs = await loadUserPreferences();
+      const newExcluded = Array.from(new Set([...(currentPrefs.excluded_companies || []), trimmed]));
+      await saveUserPreferences({
+        ...currentPrefs,
+        excluded_companies: newExcluded,
+      });
+    } catch (err) {
+      console.error("Failed to save banned company preference:", err);
+    }
+
+    // 5. Replenish if empty
     if (remaining.length === 0 && newTotal > 0) {
       const maxPages = Math.ceil(newTotal / pageSize);
       const nextTargetPage = Math.min(currentPage, Math.max(1, maxPages));
@@ -1411,6 +1462,14 @@ export default function JobsPage() {
                       <ThumbsDown className="w-4 h-4" />
                     </button>
                     <button
+                      onClick={() => handleBanCompany(job.company)}
+                      className="p-2 rounded-xl bg-obsidian-950 border border-white/[0.08] text-zinc-400 hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 transition-colors"
+                      title={`Ban ${job.company} (Exclude all jobs from this company)`}
+                      aria-label={`Ban ${job.company}`}
+                    >
+                      <Ban className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => handleMarkApplied(job)}
                       className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 transition-all text-xs font-semibold"
                       title="Mark as Applied ✓ directly"
@@ -1558,6 +1617,9 @@ export default function JobsPage() {
         }}
         onMarkApplied={(j) => {
           handleMarkApplied(j as JobItem);
+        }}
+        onBanCompany={(comp) => {
+          handleBanCompany(comp);
         }}
       />
 
