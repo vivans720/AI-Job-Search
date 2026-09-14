@@ -221,6 +221,7 @@ async def search_jobs_db(
                 "required_skills": j.required_skills or [],
                 "quality_score": j.quality_score,
                 "other_sources": other_sources,
+                "_entity": j,
             }
         )
 

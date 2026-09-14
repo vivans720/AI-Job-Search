@@ -219,6 +219,13 @@ async def run_worker():
     except Exception as e:
         logger.warning("worker_redis_connection_failed", error=str(e))
 
+    try:
+        from app.database import init_pgvector
+        await init_pgvector()
+        logger.info("worker_pgvector_and_schema_verified")
+    except Exception as e:
+        logger.warning("worker_schema_init_warning", error=str(e))
+
     logger.info("worker_ready_for_jobs")
 
     from app.services.queue_service import task_queue, TaskJob

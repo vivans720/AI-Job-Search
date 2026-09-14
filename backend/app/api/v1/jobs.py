@@ -103,19 +103,28 @@ async def search_jobs_endpoint(
     saved_res = await db.execute(saved_stmt)
     saved_map = {row[0]: row[1] for row in saved_res.all()}
 
+    # Extract Job entities returned from search_jobs_db to avoid N+1 queries
+    job_entities = [item["_entity"] for item in jobs_data if "_entity" in item]
+
+    # Bulk fetch or calculate versioned matches in a single operation
+    matches_map: dict[uuid.UUID, dict[str, Any]] = {}
+    if profile and job_entities:
+        matches_map = await matching_svc.bulk_get_or_calculate_matches(
+            db=db,
+            jobs=job_entities,
+            profile=profile,
+            preferences=prefs,
+            strict_location=strict_location,
+        )
+
     results: list[dict[str, Any]] = []
 
     for item in jobs_data:
         job_id = uuid.UUID(item["id"])
-        job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
-        if not job:
-            continue
+        eval_res = matches_map.get(job_id)
 
         match_info = None
-        if profile:
-            eval_res = matching_svc.evaluate_job(
-                job, profile, prefs, strict_location=strict_location
-            )
+        if eval_res:
             match_info = MatchBreakdown(
                 overall_score=eval_res["overall_score"],
                 skill_score=eval_res["skill_score"],
@@ -138,7 +147,7 @@ async def search_jobs_endpoint(
                 recommendation=eval_res["recommendation"],
             )
 
-        job_dict = dict(item)
+        job_dict = {k: v for k, v in item.items() if k != "_entity"}
         job_dict["match"] = match_info
         job_dict["saved_status"] = saved_map.get(job_id)
         results.append(job_dict)
@@ -568,15 +577,24 @@ async def get_dashboard_stats(
     scored_jobs = []
     strong_matches = 0
 
+    job_entities = [item["_entity"] for item in fresh_jobs if "_entity" in item]
+    matches_map = {}
+    if profile and job_entities:
+        matches_map = await matching_svc.bulk_get_or_calculate_matches(
+            db=db,
+            jobs=job_entities,
+            profile=profile,
+            preferences=prefs,
+        )
+
     for item in fresh_jobs:
         job_id = uuid.UUID(item["id"])
-        job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
-        if not job or not profile:
+        ev = matches_map.get(job_id)
+        if not ev:
             continue
-        ev = matching_svc.evaluate_job(job, profile, prefs)
         if ev["overall_score"] >= 80.0:
             strong_matches += 1
-        item_copy = dict(item)
+        item_copy = {k: v for k, v in item.items() if k != "_entity"}
         item_copy["score"] = ev["overall_score"]
         item_copy["recommendation"] = ev["recommendation"]
         scored_jobs.append(item_copy)

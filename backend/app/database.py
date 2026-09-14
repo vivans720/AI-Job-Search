@@ -48,3 +48,11 @@ async def init_pgvector() -> None:
             ADD COLUMN IF NOT EXISTS role_type VARCHAR(50) DEFAULT 'ALL',
             ADD COLUMN IF NOT EXISTS source_boards JSONB DEFAULT '["LINKEDIN", "NAUKRI", "INTERNSHALA"]'::jsonb;
         """))
+        # Auto-migrate match versioning columns if missing
+        await conn.execute(text("""
+            ALTER TABLE matches
+            ADD COLUMN IF NOT EXISTS algorithm_version VARCHAR(32) DEFAULT 'v2.1',
+            ADD COLUMN IF NOT EXISTS profile_version VARCHAR(64),
+            ADD COLUMN IF NOT EXISTS preference_version VARCHAR(64),
+            ADD COLUMN IF NOT EXISTS job_version VARCHAR(64);
+        """))

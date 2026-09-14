@@ -803,13 +803,80 @@ class MatchingService:
             "exclusion_reasons": exclusion_reasons,
         }
 
+    ALGORITHM_VERSION = "v2.1"
+
+    @staticmethod
+    def compute_profile_version(profile: CandidateProfile | None) -> str:
+        if not profile:
+            return "none"
+        import hashlib, json
+        data = {
+            "skills": sorted([s.lower().strip() for s in (profile.skills or [])]),
+            "target_roles": sorted([r.lower().strip() for r in (profile.target_roles or [])]),
+            "excluded_roles": sorted([r.lower().strip() for r in (profile.excluded_roles or [])]),
+            "experience_years": profile.experience_years or 0,
+            "experience_level": profile.experience_level or "FRESHER",
+            "preferred_locations": sorted([l.lower().strip() for l in (profile.preferred_locations or [])]),
+            "remote_preference": bool(profile.remote_preference),
+            "minimum_salary_lpa": profile.minimum_salary_lpa or 0.0,
+        }
+        return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:16]
+
+    @staticmethod
+    def compute_job_version(job: Job) -> str:
+        import hashlib, json
+        data = {
+            "title": (job.title or "").strip().lower(),
+            "role_category": (job.role_category or "").strip().lower(),
+            "company_name": (job.company_name or "").strip().lower(),
+            "location": (job.location or "").strip().lower(),
+            "remote_type": (job.remote_type or "").strip().lower(),
+            "employment_type": (job.employment_type or "").strip().lower(),
+            "experience_min": job.experience_min,
+            "experience_max": job.experience_max,
+            "required_skills": sorted([s.lower().strip() for s in (job.required_skills or [])]),
+            "preferred_skills": sorted([s.lower().strip() for s in (job.preferred_skills or [])]),
+            "salary_min": job.salary_min,
+            "salary_max": job.salary_max,
+        }
+        return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:16]
+
+    @staticmethod
+    def compute_preference_version(preferences: Preference | None) -> str:
+        if not preferences:
+            return "default"
+        import hashlib, json
+        data = {
+            "priority_companies": sorted([c.lower().strip() for c in (preferences.priority_companies or [])]),
+            "excluded_companies": sorted([c.lower().strip() for c in (preferences.excluded_companies or [])]),
+            "experience_max_years": preferences.experience_max_years,
+            "freshness_hours": preferences.freshness_hours,
+            "preferred_technologies": sorted([t.lower().strip() for t in (preferences.preferred_technologies or [])]),
+        }
+        return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:16]
+
     async def get_or_calculate_match(
         self, db: AsyncSession, job: Job, profile: CandidateProfile, preferences: Preference | None = None
     ) -> Match:
-        """Fetches existing match or calculates and persists it."""
+        """Fetches existing match if versions match, or calculates and persists it."""
+        p_ver = self.compute_profile_version(profile)
+        j_ver = self.compute_job_version(job)
+        pref_ver = self.compute_preference_version(preferences)
+        algo_ver = self.ALGORITHM_VERSION
+
         stmt = select(Match).where(Match.job_id == job.id, Match.profile_id == profile.id)
         res = await db.execute(stmt)
         existing = res.scalar_one_or_none()
+
+        # Cache Hit Check
+        if (
+            existing
+            and existing.algorithm_version == algo_ver
+            and existing.profile_version == p_ver
+            and existing.job_version == j_ver
+            and existing.preference_version == pref_ver
+        ):
+            return existing
 
         eval_data = self.evaluate_job(job, profile, preferences)
 
@@ -828,6 +895,10 @@ class MatchingService:
             existing.confidence_label = eval_data["confidence_label"]
             existing.explanation = eval_data["explanation"]
             existing.recommendation = eval_data["recommendation"]
+            existing.algorithm_version = algo_ver
+            existing.profile_version = p_ver
+            existing.job_version = j_ver
+            existing.preference_version = pref_ver
             existing.calculated_at = datetime.now(timezone.utc)
             match_record = existing
         else:
@@ -849,6 +920,10 @@ class MatchingService:
                 confidence_label=eval_data["confidence_label"],
                 explanation=eval_data["explanation"],
                 recommendation=eval_data["recommendation"],
+                algorithm_version=algo_ver,
+                profile_version=p_ver,
+                job_version=j_ver,
+                preference_version=pref_ver,
                 calculated_at=datetime.now(timezone.utc),
             )
             db.add(match_record)
@@ -856,6 +931,136 @@ class MatchingService:
         await db.commit()
         await db.refresh(match_record)
         return match_record
+
+    async def bulk_get_or_calculate_matches(
+        self,
+        db: AsyncSession,
+        jobs: list[Job],
+        profile: CandidateProfile,
+        preferences: Preference | None = None,
+        strict_location: bool = False,
+    ) -> dict[uuid.UUID, dict[str, Any]]:
+        """
+        Bulk retrieves cached matches or calculates missing/invalid ones.
+        Single DB query for existing matches, eliminating per-job DB reads.
+        """
+        if not jobs or not profile:
+            return {}
+
+        p_ver = self.compute_profile_version(profile)
+        pref_ver = self.compute_preference_version(preferences)
+        algo_ver = self.ALGORITHM_VERSION
+
+        job_map = {j.id: j for j in jobs}
+        job_ids = list(job_map.keys())
+
+        stmt = select(Match).where(
+            Match.profile_id == profile.id,
+            Match.job_id.in_(job_ids)
+        )
+        res = await db.execute(stmt)
+        existing_matches = {m.job_id: m for m in res.scalars().all()}
+
+        results: dict[uuid.UUID, dict[str, Any]] = {}
+        to_persist: list[Match] = []
+
+        for job_id, job in job_map.items():
+            j_ver = self.compute_job_version(job)
+            existing = existing_matches.get(job_id)
+
+            if (
+                existing
+                and existing.algorithm_version == algo_ver
+                and existing.profile_version == p_ver
+                and existing.job_version == j_ver
+                and existing.preference_version == pref_ver
+            ):
+                # Cache hit: reconstruct eval_data dict
+                eval_res = {
+                    "overall_score": existing.overall_score,
+                    "skill_score": existing.skill_score,
+                    "semantic_score": existing.semantic_score,
+                    "experience_score": existing.experience_score,
+                    "role_score": existing.role_score,
+                    "location_score": existing.location_score,
+                    "preference_score": existing.preference_score,
+                    "matched_skills": existing.matched_skills,
+                    "missing_skills": existing.missing_skills,
+                    "transferable_skills": existing.transferable_skills,
+                    "required_skills": job.required_skills or [],
+                    "preferred_skills": job.preferred_skills or [],
+                    "transferable_details": [],
+                    "experience_eligible": True,
+                    "location_eligible": True,
+                    "confidence": existing.confidence,
+                    "confidence_label": existing.confidence_label,
+                    "explanation": existing.explanation,
+                    "recommendation": existing.recommendation,
+                }
+                results[job_id] = eval_res
+            else:
+                # Cache miss / version mismatch: calculate deterministically
+                eval_res = self.evaluate_job(
+                    job, profile, preferences, strict_location=strict_location
+                )
+                results[job_id] = eval_res
+
+                if existing:
+                    existing.overall_score = eval_res["overall_score"]
+                    existing.skill_score = eval_res["skill_score"]
+                    existing.semantic_score = eval_res["semantic_score"]
+                    existing.experience_score = eval_res["experience_score"]
+                    existing.role_score = eval_res["role_score"]
+                    existing.location_score = eval_res["location_score"]
+                    existing.preference_score = eval_res["preference_score"]
+                    existing.matched_skills = eval_res["matched_skills"]
+                    existing.missing_skills = eval_res["missing_skills"]
+                    existing.transferable_skills = eval_res["transferable_skills"]
+                    existing.confidence = eval_res.get("confidence", 1.0)
+                    existing.confidence_label = eval_res.get("confidence_label", "HIGH")
+                    existing.explanation = eval_res["explanation"]
+                    existing.recommendation = eval_res["recommendation"]
+                    existing.algorithm_version = algo_ver
+                    existing.profile_version = p_ver
+                    existing.job_version = j_ver
+                    existing.preference_version = pref_ver
+                    existing.calculated_at = datetime.now(timezone.utc)
+                else:
+                    new_m = Match(
+                        id=uuid.uuid4(),
+                        job_id=job.id,
+                        profile_id=profile.id,
+                        overall_score=eval_res["overall_score"],
+                        skill_score=eval_res["skill_score"],
+                        semantic_score=eval_res["semantic_score"],
+                        experience_score=eval_res["experience_score"],
+                        role_score=eval_res["role_score"],
+                        location_score=eval_res["location_score"],
+                        preference_score=eval_res["preference_score"],
+                        matched_skills=eval_res["matched_skills"],
+                        missing_skills=eval_res["missing_skills"],
+                        transferable_skills=eval_res["transferable_skills"],
+                        confidence=eval_res.get("confidence", 1.0),
+                        confidence_label=eval_res.get("confidence_label", "HIGH"),
+                        explanation=eval_res["explanation"],
+                        recommendation=eval_res["recommendation"],
+                        algorithm_version=algo_ver,
+                        profile_version=p_ver,
+                        job_version=j_ver,
+                        preference_version=pref_ver,
+                        calculated_at=datetime.now(timezone.utc),
+                    )
+                    db.add(new_m)
+                to_persist.append(existing or new_m)
+
+        if to_persist:
+            try:
+                await db.commit()
+            except Exception as e:
+                logger.warning("bulk_match_persist_error", error=str(e))
+                await db.rollback()
+
+        return results
 
 
 _default_matching_service: MatchingService | None = None

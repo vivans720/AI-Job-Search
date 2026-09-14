@@ -46,4 +46,9 @@ class Match(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
+    algorithm_version: Mapped[str | None] = mapped_column(String(32), nullable=True, default="v2.1", index=True)
+    profile_version: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    preference_version: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    job_version: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
     job: Mapped["Job"] = relationship("Job", back_populates="matches")
