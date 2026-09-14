@@ -1,277 +1,387 @@
 # AI Job Agent India
 
-Personal AI-powered job discovery and recommendation engine for the Indian job market, focused on freshers and entry-level software/AI roles (0–2 years experience) with strict 24-hour freshness and skill-first deterministic matching.
+[![CI](https://github.com/vivans720/AI-Job-Search/actions/workflows/ci.yml/badge.svg)](https://github.com/vivans720/AI-Job-Search/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-15.1-black?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Key Principles
-- **Recall-First Architecture**: Backend never silently discards potentially relevant jobs due to subjective rules (AI score, title/role filter, skill mismatch, experience ceiling >2y, or short snippet length). Strict 24-hour freshness in `Asia/Kolkata` (IST) is the primary eligibility gate.
-- **Manual Application Only**: Finds and recommends jobs with verified original application URLs. Never applies automatically.
-- **Skill-First Non-Destructive Scoring**: Technical requirements drive 85% of match affinity. Job title and semantic embeddings never inflate scores, but poor matches are scored (not dropped), allowing the candidate full authority.
-- **User-Controlled Frontend Filtering**: Experience, skills, and salary filters are client-controlled pills rather than destructive backend gates.
-- **Strict 24-Hour Freshness**: Enforced deterministically in backend code (IST, `Asia/Kolkata`), not delegated to LLM prompt.
-- **Hybrid Architecture**: PostgreSQL 16 + pgvector in Docker; FastAPI backend, Next.js 15.1 dashboard, and Hermes Agent running locally.
-- **Zero Cloud Embedding Cost**: Local dense embeddings via `BAAI/bge-small-en-v1.5` (384-dimensional ONNX runtime).
-- **Local LLM Intelligence**: OmniRoute OpenAI-compatible proxy running on port 20128 for resume profiling and skill extraction fallbacks.
+An intelligent job discovery and recommendation engine tailored for the Indian tech job market, focusing on early-career engineers and freshers (0–2 years of experience). The system pairs deterministic 24-hour freshness gates and non-destructive skill-first scoring with resilient web crawling, local vector embeddings, multi-provider LLM intelligence, and Model Context Protocol (MCP) integration for autonomous agents.
 
 ---
 
+## Architecture Overview
 
-## Prerequisites
-- Docker & Docker Compose
-- Python 3.11+
-- Node.js 18+ (tested on Node v24)
-- Running instance of OmniRoute (default: `http://localhost:20128/v1`)
-- Hermes Agent installed in `~/.hermes`
+```mermaid
+flowchart TD
+    subgraph Ingestion["1. Multi-Source Ingestion Engine"]
+        IN[Internshala Adapter] -->|Stealth Playwright + HTTP| RAW[Raw Job Listings]
+        NK[Naukri Adapter] -->|__NEXT_DATA__ + DOM| RAW
+        LI[LinkedIn Adapter] -->|Guest API + Crawl4AI| RAW
+        C4[Crawl4AI Provider] -.->|Fallback Browser Engine| LI
+        TOR[Tor SOCKS5 Proxy] -.->|Fallback on 403 / 429| Ingestion
+    end
+
+    subgraph Processing["2. Processing & Normalization Pipeline"]
+        RAW --> DEDUP[Deduplication & Hash Verification]
+        DEDUP --> FRESH[Strict 24h Freshness Filter IST]
+        FRESH --> SKILLS[Skill Extraction: Regex + LLM Fallback]
+        SKILLS --> EMBED[Local Vector Embedding ONNX 384d]
+    end
+
+    subgraph Storage["3. Persistence & Queuing"]
+        EMBED --> PG[(PostgreSQL 16 + pgvector)]
+        REDIS[(Redis 7)] <-->|Task Queue & Cache| WORKER[Async Background Worker]
+        WORKER --> Processing
+    end
+
+    subgraph Scoring["4. Skill-First Matching Engine"]
+        PG --> MATCH[6-Dimension Deterministic Scorer]
+        CAND[Candidate Profile & Resume] --> MATCH
+        PREF[User Search Preferences] --> MATCH
+    end
+
+    subgraph Interfaces["5. Client & Agent Interfaces"]
+        MATCH --> API[FastAPI Backend REST API]
+        API <--> WEB[Next.js 15.1 Web Dashboard]
+        API <--> MCP[FastMCP Server stdio / SSE]
+        MCP <--> AGENT[Hermes / Claude / AI Agent]
+    end
+```
 
 ---
 
-## Quick Start
+## Key Implemented Features
 
-### Full-Stack Docker Deployment (One Command)
+### 1. Deterministic 24-Hour Freshness Enforcement
+- **Backend Enforced**: Freshness is calculated in code against `Asia/Kolkata` (IST), never delegated to LLM prompt hallucination.
+- **Configurable Horizon**: Discrete time filters (`1h`, `4h`, `8h`, `12h`, `16h`, `24h`) reject stale postings.
+- **Relative Timestamp Parsing**: Accurately normalizes dynamic relative dates ("10 hours ago", "Active today", "Just now") into UTC timelines.
+
+### 2. Skill-First Deterministic Matching Model
+Scoring prioritizes proven technical capability over inflated job titles or uncalibrated semantic similarity:
+- **Required Skills (65%)**: Direct matching against core technical requirements.
+- **Preferred Skills (10%)**: Credit for bonus proficiencies.
+- **Transferable Skills (10%)**: Partial credit via domain skill mappings.
+- **Experience Alignment (5%)**: Evaluates early-career suitability (0–2 years).
+- **Location Alignment (5%)**: Checks preferred cities or remote availability.
+- **Preference Alignment (5%)**: Compares salary expectations and candidate preferences.
+- **Recall-First Principle**: Jobs are not dropped due to low AI scores; lower-matching jobs are preserved and scored transparently so the candidate retains final judgment.
+
+### 3. Production Scraping & Anti-Bot Camouflage
+- **Internshala Adapter**: Isolated Chromium contexts with randomized viewports, stealth script injection (`navigator.webdriver` removal, realistic plugins), cookie clearing, and resilient HTTP fallbacks.
+- **Naukri Adapter**: Extracts raw JSON payloads directly from embedded `__NEXT_DATA__` script tags, bypassing fragile DOM selector drift.
+- **LinkedIn Adapter**: Fast unauthenticated public guest API querying recent postings (`f_TPR=r86400`), falling back to Crawl4AI rendered extraction or stealth Playwright.
+- **Crawl4AI Provider**: Concurrency-bounded crawler abstraction (`Crawl4AICrawlerProvider`) powered by `crawl4ai` with JSON-CSS extraction.
+- **Network Resilience**: Automatic failover to local Tor SOCKS5 proxy (`socks5://127.0.0.1:9050`) on HTTP 403 or 429 responses when Tor proxy is running.
+- **Resource Rejection**: Playwright route filtering aborts heavy media (`.png`, `.jpg`, `.woff2`, `.mp4`) and analytics beacons, cutting load times and memory footprint.
+
+### 4. Zero-Cloud Embedding & Multi-Provider AI Architecture
+- **Local Dense Embeddings**: Generates 384-dimensional dense vector embeddings using `BAAI/bge-small-en-v1.5` via FastEmbed/ONNX runtime. Zero external API cost.
+- **11 Registered AI Providers**: Configurable LLM provider registry (`app.intelligence.registry`) supporting:
+  - **Local**: Ollama (default: `qwen3.5:9b`), OpenCode.
+  - **Cloud & Gateways**: OpenAI, Google Gemini, Anthropic Claude, Groq, OpenRouter, Cerebras, Mistral, NVIDIA NIM, and custom OpenAI-compatible endpoints (vLLM, LiteLLM, OmniRoute).
+- **Fallback Resilience**: Primary provider failures gracefully fall back to configured secondary providers.
+
+### 5. Asynchronous Task Worker & Queue
+- **Redis Job Queue**: Long-running crawling, multi-source sync, and AI enrichment tasks run asynchronously via `app.worker`.
+- **Granular Progress Reporting**: Real-time per-source ingestion statistics (`discovered`, `saved`, `updated`, `duplicates`, `rate_limit_wait_ms`).
+- **Synchronous Fallback**: Ingestion endpoints automatically fall back to synchronous execution when Redis queue is unavailable or when `async_mode=false` is requested.
+
+### 6. Model Context Protocol (MCP) Interface
+- Standalone FastMCP server (`mcp-server/server.py`) exposing 10 agentic tools over `stdio` or `sse`:
+  - `get_candidate_profile`: Retrieve skills, preferences, and experience.
+  - `search_jobs`: Query verified fresh jobs bounded by <= 24h age.
+  - `get_job`: Fetch full job details and original application URL.
+  - `match_job` & `rank_jobs`: Compute match breakdown and rank candidate lists.
+  - `save_job`, `ignore_job`, `update_application_status`: Manage pipeline state.
+  - `get_saved_jobs` & `get_search_history`: Audit active progress and query logs.
+- **Manual Application Integrity**: Updates application state (`DISCOVERED`, `SAVED`, `VIEWED`, `APPLIED`, `INTERVIEW`, `REJECTED`, `OFFER`); strictly prohibits automated unauthorized applications.
+
+### 7. Modern Next.js 15 Dashboard
+- Built with Next.js 15.1 (App Router), React 19, TypeScript, and Tailwind CSS.
+- **Discovery Radar (`/jobs`)**: Filterable feed with discrete freshness pills, role selectors, location tags, and real-time match breakdown modals.
+- **Pipeline Tracker (`/saved`)**: Status-driven board managing application lifecycle stages.
+- **Profile & Resume (`/profile`, `/resume`)**: PDF resume parser and skill profile editor.
+- **Preferences (`/preferences`)**: Fine-grained configuration for target roles, excluded companies, and scoring thresholds.
+- **AI Diagnostics (`/ai-provider`)**: Real-time provider switcher, latency ping tests, and capability inspection.
+
+---
+
+## Tech Stack
+
+| Category | Technologies |
+|---|---|
+| **Backend Framework** | Python 3.11+, FastAPI 0.115, Pydantic v2, Structlog |
+| **Database & Vector** | PostgreSQL 16, pgvector, SQLAlchemy 2.0 (asyncio + asyncpg), Alembic |
+| **Caching & Queuing** | Redis 7, redis-py (asyncio), custom task worker |
+| **Web Crawling** | Playwright (stealth), Crawl4AI 0.9+, BeautifulSoup4, HTTPX |
+| **Embeddings & AI** | FastEmbed (`BAAI/bge-small-en-v1.5`), Ollama, OpenAI, Gemini, Anthropic |
+| **Frontend** | Next.js 15.1, React 19, TypeScript 5, Tailwind CSS 3.4, Lucide React |
+| **Agent Interface** | Model Context Protocol (FastMCP 1.x) |
+| **Containerization** | Docker, Docker Compose |
+
+---
+
+## Repository Structure
+
+```
+.
+├── backend/
+│   ├── alembic/                # Database migration revisions
+│   ├── app/
+│   │   ├── api/v1/             # REST endpoints (jobs, profile, preferences, ai, sources)
+│   │   ├── core/               # Logging, Redis pool, rate limiting, metrics
+│   │   ├── crawling/           # Crawl4AI provider and browser abstractions
+│   │   ├── intelligence/       # LLM provider registry, extractors, embeddings
+│   │   ├── models/             # SQLAlchemy ORM models (Job, Company, Profile, etc.)
+│   │   ├── schemas/            # Pydantic request and response schemas
+│   │   ├── services/           # Matching, ingestion, dedup, freshness services
+│   │   ├── sources/adapters/   # Scraper implementations (Internshala, Naukri, LinkedIn)
+│   │   ├── utils/              # Browser stealth, Tor client, JSON-LD parser
+│   │   ├── config.py           # Application configuration via Pydantic BaseSettings
+│   │   ├── main.py             # FastAPI factory and middleware setup
+│   │   └── worker.py           # Async Redis queue worker
+│   ├── tests/                  # Backend test suite
+│   ├── Dockerfile              # Production backend container definition
+│   └── requirements.txt        # Backend dependencies
+├── frontend/
+│   ├── src/app/                # Next.js App Router pages (jobs, saved, profile, ai-provider)
+│   ├── public/                 # Static assets
+│   ├── Dockerfile              # Frontend container definition
+│   └── package.json            # Node dependencies
+├── mcp-server/
+│   ├── server.py               # FastMCP server entry point
+│   └── tools/                  # Handlers for candidate, job, search, and match tools
+├── scripts/                    # Ingestion, seeding, and agent execution scripts
+├── docker-compose.yml          # Multi-service stack (postgres, redis, backend, worker, frontend, ollama)
+├── Makefile                    # Standard project task runner
+└── .github/workflows/ci.yml    # Continuous integration pipeline
+```
+
+---
+
+## Environment Variables
+
+All settings are managed in `backend/app/config.py` and read from `.env` in the repository root:
+
+### Core Infrastructure
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | `postgresql+asyncpg://jobagent:password@localhost:5432/jobagent` | Async PostgreSQL connection string |
+| `POSTGRES_USER` | `jobagent` | Database username |
+| `POSTGRES_PASSWORD` | `password` | Database password |
+| `POSTGRES_DB` | `jobagent` | Database name |
+| `POSTGRES_PORT` | `5432` | PostgreSQL port |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
+
+### Ingestion & Matching Gates
+| Variable | Default | Description |
+|---|---|---|
+| `FRESHNESS_HOURS` | `24` | Maximum allowable posting age in hours |
+| `DEFAULT_TIMEZONE` | `Asia/Kolkata` | Timezone for freshness evaluation |
+| `EXPERIENCE_MAX_YEARS`| `2` | Maximum years of experience ceiling |
+| `WEIGHT_REQUIRED_SKILL_MATCH` | `0.65` | Scoring weight for mandatory skills |
+| `WEIGHT_PREFERRED_SKILL_MATCH` | `0.10` | Scoring weight for bonus skills |
+| `WEIGHT_TRANSFERABLE_SKILL_MATCH` | `0.10` | Scoring weight for transferable skills |
+| `WEIGHT_EXPERIENCE_MATCH` | `0.05` | Scoring weight for experience alignment |
+| `WEIGHT_LOCATION_MATCH` | `0.05` | Scoring weight for location preference |
+| `WEIGHT_PREFERENCE_MATCH` | `0.05` | Scoring weight for candidate preferences |
+
+### Embeddings & AI Providers
+| Variable | Default | Description |
+|---|---|---|
+| `EMBEDDING_PROVIDER` | `local` | Vector embedding backend (`local`) |
+| `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | FastEmbed ONNX model name |
+| `EMBEDDING_DIMENSIONS`| `384` | Embedding vector dimensionality |
+| `LLM_PROVIDER` | `ollama` | Active provider (`ollama`, `openai`, `gemini`, `anthropic`, `groq`, etc.) |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama API endpoint |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Default Ollama model |
+| `OPENAI_API_KEY` | `""` | OpenAI API key |
+| `GEMINI_API_KEY` | `""` | Google Gemini API key |
+| `ANTHROPIC_API_KEY` | `""` | Anthropic Claude API key |
+| `GROQ_API_KEY` | `""` | Groq API key |
+| `OPENROUTER_API_KEY` | `""` | OpenRouter API key |
+| `LLM_FALLBACK_PROVIDER` | `None` | Secondary provider ID for automated failover |
+
+### Crawling & Scraper Hardening
+| Variable | Default | Description |
+|---|---|---|
+| `SOURCE_INTERNSHALA_ENABLED` | `true` | Enable/disable Internshala adapter |
+| `SOURCE_NAUKRI_ENABLED` | `true` | Enable/disable Naukri adapter |
+| `SOURCE_LINKEDIN_ENABLED` | `true` | Enable/disable LinkedIn adapter |
+| `CRAWL4AI_ENABLED` | `true` | Enable Crawl4AI provider fallback |
+| `CRAWL4AI_HEADLESS` | `true` | Run Crawl4AI browser in headless mode |
+| `CRAWL4AI_MAX_CONCURRENCY` | `3` | Maximum concurrent page crawls |
+| `BROWSER_USER_DATA_DIR` | `~/.config/job_agent_browser_profile` | Path to persistent browser profile |
+| `TOR_ENABLED` | `true` | Enable fallback through Tor SOCKS5 proxy |
+| `TOR_PROXY_URL` | `socks5://127.0.0.1:9050` | Local Tor SOCKS5 proxy address |
+
+---
+
+## Getting Started
+
+### Option A: Complete Docker Compose Stack
+
+Start all services (PostgreSQL with pgvector, Redis, FastAPI backend, background worker, Next.js frontend, and Ollama) with Docker Compose:
+
 ```bash
-docker compose up -d
+docker compose up --build -d
 # or: make docker-up
 ```
-Starts `postgres` (pgvector), `redis`, `backend` (FastAPI with auto-migrations), `worker`, and `frontend` (Next.js 15).
 
-Or start individual services manually:
-
-### 1. Start Database Container
+Verify services are healthy:
 ```bash
-docker compose up -d postgres redis
+docker compose ps
 ```
 
+- **Frontend**: [http://localhost:3000](http://localhost:3000)
+- **Backend API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Health Endpoint**: [http://localhost:8000/api/health](http://localhost:8000/api/health)
 
-### 2. Configure Environment
+Stop services:
+```bash
+docker compose down
+# or: make docker-down
+```
+
+---
+
+### Option B: Local Development Setup
+
+#### 1. Prerequisites
+- Python 3.11+
+- Node.js 18+
+- Docker & Docker Compose (for PostgreSQL and Redis)
+
+#### 2. Start Supporting Services
+Start PostgreSQL (with pgvector) and Redis:
+```bash
+make db-up
+# or: docker compose up -d postgres redis
+```
+
+#### 3. Setup and Run Backend
+Configure environment:
 ```bash
 cp .env.example .env
-# Active .env is pre-configured for local OmniRoute (port 20128)
 ```
 
-### 3. Run Backend
+Install Python dependencies and Playwright browser:
 ```bash
-./backend.sh
-# or: make backend
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+playwright install chromium
+cd ..
 ```
-Verify health:
+
+Start the FastAPI backend server:
+```bash
+make backend
+# or: ./backend.sh
+```
+
+Verify backend connectivity:
 ```bash
 curl http://localhost:8000/api/health
-# {"status":"ok","database":"connected","pgvector":true}
+# Response: {"status":"ok","database":"connected","pgvector":true}
 ```
 
-Seed candidate resume:
+Seed initial candidate profile and resume:
 ```bash
-backend/.venv/bin/python scripts/seed_candidate_resume.py
+make seed
+# or: backend/.venv/bin/python scripts/seed_candidate_resume.py
 ```
 
-Sync live fresh jobs from enabled platforms:
+#### 4. Start Background Worker (Optional for Async Sync)
 ```bash
-# Sync live fresh jobs from Internshala
-backend/.venv/bin/python scripts/sync_internshala.py
-
-# Sync live fresh jobs from Naukri
-backend/.venv/bin/python scripts/sync_naukri.py
-
-# Sync live fresh jobs from LinkedIn
-backend/.venv/bin/python scripts/sync_linkedin.py
-
-# Sync live fresh jobs via API (All Sources)
-curl -X POST "http://localhost:8000/api/v1/jobs/sync?source=all"
+make worker
+# or: cd backend && .venv/bin/python -m app.worker
 ```
-*(Note: `scripts/seed_sample_jobs.py` is reserved strictly for offline test development fixtures. Live production feeds display 100% authentic scraped listings with zero mock data contamination.)*
 
-### 4. Run Frontend
+#### 5. Setup and Run Frontend
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## Matching Engine & Skill Architecture
+## Live Ingestion & Sync Commands
 
-The engine uses a **Skill-First Deterministic Model** designed to prevent false positives:
+Trigger live ingestion across supported job boards directly from CLI or API:
 
-| Dimension | Weight | Description |
-|---|---|---|
-| **Required Skills** | **65%** | Exact & canonical matches on mandatory requirements |
-| **Preferred Skills** | **10%** | Matches on bonus/desirable skills (pro-rated if none required) |
-| **Transferable Skills** | **10%** | Partial credit via taxonomy matrix (e.g. Python $\to$ FastAPI at 50%) |
-| **Experience Fit** | **5%** | Entry-level (0–2y) and fresher/internship alignment |
-| **Location Fit** | **5%** | Preferred city or remote work alignment |
-| **Preferences Fit** | **5%** | Salary expectations and target company alignment |
-| **Job Title** | **0%** | Evaluated via hard eligibility gating; does not artificially inflate score |
-| **Semantic Embedding** | **0%** | Not used to inflate score; reserved for tie-breaking/retrieval |
-
-### Recall-First Scoring & Non-Destructive Ingestion
-- **Recall-First Principle**: The backend never silently discards a job because of AI match scores, candidate excluded roles, title mismatch, or missing skills. All fresh jobs (&le;24h) are persisted and returned with `is_excluded = False`.
-- **Informational Dimension Eligibility**: Criteria like `experience_eligible` and `location_eligible` are computed as informational breakdown flags and match dimension scores rather than drop gates.
-- **Role Ineligibility Gating**: Out-of-domain roles without &ge;80% tech skill match are scored lower (capped at &le;30%), but preserved in the feed so candidates retain full judgment.
-- **Non-Destructive Salary Handling**: Positions with undisclosed salaries (`salary_min is None`) are classified as "Not disclosed / Unknown", never assumed unpaid. Explicitly unpaid positions can be filtered by candidate in the frontend.
-- **Uncapped Matching Pool**: Eliminates premature SQL `LIMIT` truncation before match evaluation. When sorting by match score, all fresh candidate jobs are evaluated before ranking.
-
-### Job Skill Extraction Service
-- **Deterministic First Pass**: Fast, zero-cost regex parsing with word boundaries and section recognition.
-- **LLM Fallback**: Invoked via local OmniRoute when descriptions are unstructured, narrative, or have low skill coverage.
-- **Anti-Hallucination Guard**: Word boundary verification ensures extracted skills exist in original job text.
-- **Soft-Skill Filter**: Discards generic traits (Communication, Teamwork, Problem Solving).
-- **Fault-Tolerant**: Non-blocking timeout (10s) with automatic fallback to deterministic extraction.
-
----
-
-## Live Source Adapters
-
-1. **Internshala (`InternshalaAdapter`)**:
-   - Discovers entry-level full-time jobs and paid tech internships across India with category query expansion.
-   - **Ephemeral Playwright Camouflage & Dual Gate**: Uses isolated, clean Chromium instances (`--incognito`, `--no-sandbox`) with randomized desktop viewports (1280–1920 $\times$ 720–1080), randomized Chrome versions (`Chrome/{120-131}`), `Asia/Kolkata` timezone, stealth script injection, and explicit cookie clearing (`clear_cookies()`) to prevent perimeter "Account is put on hold" blocks. Paired with resilient HTTP fallback.
-   - **False-Positive Account Hold Resolution**: `detect_internshala_block_state` inspects active card containers (`.individual_internship`, `#internship_list_container`) first and strips `#modal_email` template strings, preventing 100% false-positive block aborts on healthy pages.
-   - **Anti-Bot Perimeter Guard**: Proactively detects account hold or rules violation pages (`ACCOUNT_HOLD`), cleanly marks `status = "blocked"`, and fails fast to protect IP reputation without crashing multi-source sync.
-   - **Timestamp Rescue**: Rescues active relative timestamps ("Just now", "Today", "Active today", "1 day ago") into verified high-confidence UTC timelines while strictly excluding stale posts (>24h). Decouples internship duration from posting dates.
-2. **Naukri (`NaukriAdapter`)**:
-   - **Next.js Static Data Layer Extraction (`__NEXT_DATA__`)**: Directly extracts raw JSON payloads from embedded Next.js script tags, guaranteeing 100% data fidelity and total immunity to CSS selector drift, with DOM card parsing as fallback.
-   - **Dynamic Experience Floor Normalization**: Resolves the experience ceiling trap on broad ranges (`0-5 Yrs`, `0-4 Yrs`, `1-4 Yrs`). When a position accepts early-career applicants (`exp_min <= 1`), entry-level opportunities survive downstream experience filters.
-   - **Deterministic Process Lifecycle**: Eliminates Chrome zombie thread leaks via strict `asyncio.wait_for` timeouts coupled with explicit `proc.kill()` and `proc.wait()` cleanup guardrails.
-   - **Experience String Blindness Fix**: Avoids forced `&experience=0` queries that limit results strictly to literal "Fresher" tags, allowing 0–2y early career postings to enter the pipeline.
-3. **LinkedIn (`LinkedInAdapter`)**:
-    - Triple Discovery Engine: Primary fast path via unauthenticated public guest API (`/jobs-guest/jobs/api/seeMoreJobPostings/search`) targeting postings &le;24 hours (`f_TPR=r86400`).
-    - Rendered path via shared Crawl4AI provider (`CrawlerProvider` boundary, `_fetch_via_crawl4ai`), used when guest API misses. Verified working against `example.com`; LinkedIn perimeter currently slow/blocks rendered fetches, so this path degrades gracefully.
-    - Final fallback path: Playwright headless browser automation leveraging stealth camouflage (`apply_stealth_context`).
-   - **Guest API Snippet Hydration & Fallback**: Fetches full job details via lightweight HTTP endpoint for shallow guest cards (`desc_len < 200`). If hydration fails or snippet remains short, retains the job with `description_confidence = "LOW"`.
-   - **Relative Recency Prioritization**: Prioritizes exact relative posting strings ("10 hours ago", "14 hours ago", "22 hours ago") anchored to `scraped_at` over date-only timestamps, preventing false-positive stale rejections from artificial midnight offsets.
-   - Resilient networking: Built-in local Tor SOCKS5 network proxy fallback (`socks5://127.0.0.1:9050`) on HTTP `429` rate limits or `403` anti-bot blocks.
-4. **Crawl4AI Infrastructure (`Crawl4AICrawlerProvider`, `crawl4ai==0.9.3`)**:
-    - Universal `CrawlerProvider` abstraction (`backend/app/crawling/`) decoupled from concrete crawler implementations.
-    - Powered by Crawl4AI `AsyncWebCrawler` with concurrency bounding (`asyncio.Semaphore(3)`), page timeouts, and schema-driven `JsonCssExtractionStrategy` for structured card/field parsing.
-    - Used by LinkedIn rendered fallback path. Internshala and Naukri retain custom resilient HTTP/Playwright paths. Health probe at `GET /api/v1/sources/health` reports status truthfully.
-
-### Multi-Source Live Sync
-- **Interactive UI**: Dashboard (`/dashboard`) and Jobs Feed (`/jobs`) feature source selectors to trigger on-demand sync across `All Sources`, `Internshala`, `Naukri`, or `LinkedIn`.
-- **Candidate Target-Role Focused**: Automatically targets active roles from the candidate profile to optimize crawling speed and relevance.
-- **Fail-Safe Session Rollback**: Database transactions rollback cleanly on any source error via `sync_source_isolated` / `sync_all_isolated`, ensuring other adapters sync without interruption.
-- **Structured Status Response**: Sync API returns composite `status` (`success`, `partial_success`, `blocked`, `failed`) and granular per-source report under `sources` detailing discovered, accepted, and error context.
-
----
-
-## Scraping Engine Hardening & Free Anti-Bot Architecture
-
-To ingest from global enterprise platforms (LinkedIn, Wellfound, Instahyre) without IP bans or expensive proxy services, the backend foundation includes 5 mandatory protection layers:
-
-1. **Local Browser Fingerprint Camouflage (`app/utils/browser_stealth.py`)**:
-   - Strips `navigator.webdriver` (returns `undefined`).
-   - Injects realistic `window.chrome = { runtime: {} }` and mock `navigator.plugins`.
-   - Emulates native Indian language preferences (`['en-IN', 'en-US', 'en']`).
-   - Dynamic viewport randomization: assigns random desktop geometries (1366–1920 &times; 768–1080).
-   - Standard desktop User-Agent and `Accept-Language` headers.
-
-2. **Shared Local Session Persistence (`app/utils/browser_context.py`)**:
-   - Replaces fragile ephemeral browser contexts with `playwright.chromium.launch_persistent_context()`.
-   - Binds to a persistent local hidden profile: `~/.config/job_agent_browser_profile`.
-   - **Interactive Login CLI**: Run `python -m app.utils.browser_context --login <URL>` once in visible mode to solve CAPTCHAs and log in manually. Headless scrapers reuse those exact saved cookies indefinitely.
-
-3. **Free Local Tor SOCKS5 Network Proxy Fallback (`app/utils/http_client.py`)**:
-   - Socket-level probe (`is_tor_proxy_available` on `127.0.0.1:9050`, 0.3s timeout).
-   - Primary traffic routes through direct home WAN interface.
-   - On persistent rate limits (`429`) or anti-bot blocks (`403`, `406`), automatically re-routes requests through the local Tor SOCKS5 proxy without paid proxy subscriptions.
-
-4. **Resource Interception & Content Rejection Filters (`app/utils/browser_stealth.py`)**:
-   - Playwright route filter (`page.route("**/*", ...)`) aborting heavy media formats (`.png`, `.jpg`, `.woff2`, `.ttf`, `.mp4`).
-   - Aborts analytics and telemetry beacons (Google Analytics, Datadog, Hotjar, DoubleClick, Segment, Clarity).
-   - Reduces RAM/bandwidth usage by up to 70% and accelerates page load times.
-
-5. **Schema.org JSON-LD Structural Extraction Channel (`app/utils/json_ld.py`)**:
-   - Parses `<script type="application/ld+json">` containers directly from page HTML.
-   - Extracts canonical Schema.org `JobPosting` fields (title, company, description, datePosted, salary, location, remote type).
-   - Falls back gracefully to fragile CSS selectors only when structured metadata is absent.
-
----
-
-## Hermes Agent MCP Connection
-
-Register the FastMCP server with your local Hermes Agent:
 ```bash
-~/.hermes/hermes-agent/venv/bin/hermes mcp add job-agent-india \
-  --command "$(pwd)/backend/.venv/bin/python" \
-  --args "$(pwd)/mcp-server/server.py"
+# Sync Internshala opportunities
+backend/.venv/bin/python scripts/sync_internshala.py
+
+# Sync Naukri opportunities
+backend/.venv/bin/python scripts/sync_naukri.py
+
+# Sync LinkedIn opportunities
+backend/.venv/bin/python scripts/sync_linkedin.py
+
+# Trigger sync via REST API (asynchronous queue execution)
+curl -X POST "http://localhost:8000/api/v1/jobs/sync?source=all"
+
+# Trigger synchronous sync via REST API
+curl -X POST "http://localhost:8000/api/v1/jobs/sync?source=all&async_mode=false"
 ```
 
-Test connection:
+---
+
+## Model Context Protocol (MCP) Setup
+
+Run the standalone FastMCP server:
 ```bash
-~/.hermes/hermes-agent/venv/bin/hermes mcp test job-agent-india
+make mcp
+# or: backend/.venv/bin/python mcp-server/server.py
 ```
 
-### Available MCP Tools (10)
-- `get_candidate_profile`: Retrieve skills, experience, target and excluded roles.
-- `search_jobs`: Query fresh jobs strictly bounded by &le;24h posting age.
-- `get_job`: Retrieve full job details with verified original application URL.
-- `match_job`: Evaluate 6-dimension deterministic match against candidate profile.
-- `rank_jobs`: Rank multiple job IDs by match score.
-- `save_job` / `ignore_job`: Bookmark or dismiss opportunities.
-- `update_application_status`: Track manual application progress (`DISCOVERED` &rarr; `APPLIED` &rarr; `OFFER`).
-- `get_saved_jobs`: View bookmarked and applied jobs.
-- `get_search_history`: Review recent searches and discovery stats.
+Register with an MCP-compatible client (e.g. Hermes Agent, Claude Desktop):
 
-### Installed Hermes Skills (3)
-- `job-search`: 5-step autonomous discovery loop via MCP and OmniRoute.
-- `daily-digest`: Morning briefing of top fresh matches.
-- `pipeline-tracker`: Application tracking and status progression.
-
----
-
-## Key Backend Endpoints
-
-- `GET /api/health` — Database and pgvector healthcheck probe.
-- `GET /api/v1/sources/health` — Live connectivity and health probe across all registered source adapters (`internshala`, `naukri`, `linkedin`) and crawling infrastructure (`infrastructure.crawl4ai`).
-- `GET /api/v1/sources/history` — Audit trail of recent multi-source sync runs from JSONL persistent log.
-- `GET /api/v1/resumes/active` — Retrieve latest active parsed resume profile.
-- `GET /api/v1/jobs` — Fresh job search strictly bounded &le;24h with deterministic skill-first scoring and automatic exclusion of saved, tracked, and rejected jobs (`exclude_rejected=true`).
-- `POST /api/v1/jobs/{job_id}/status` — Update tracking status (`SAVED`, `REJECTED`, `APPLIED`, etc.) with instant discovery feed synchronization.
-- `GET /api/v1/dashboard/stats` — Real-time aggregate statistics for candidate dashboard (excludes saved and rejected jobs from fresh recommendations).
-- `POST /api/v1/agent/briefing` — AI Morning Executive Briefing powered by OmniRoute LLM and top fresh matches (excludes saved and rejected jobs).
-- `POST /api/v1/jobs/sync?source=all` — On-demand live multi-source ingestion across all enabled boards (Internshala, Naukri, LinkedIn).
-- `POST /api/v1/jobs/sync?source=internshala|naukri|linkedin` — On-demand live ingestion for a specific job board or multi-source engine.
-- `GET /PUT /api/v1/profile` — Candidate profile retrieval and manual override management.
-- `GET /PUT /api/v1/preferences` — Search criteria, match threshold, discrete freshness, experience tiers, locations, role types, source boards, priority/exclusion lists, and AI gateway settings.
-- `GET /api/v1/ai/providers` — List all 11 supported AI providers with capability metadata and configuration status.
-- `POST /api/v1/ai/test` — Live connectivity and model diagnostic ping with round-trip latency.
-
----
-
-## User Preferences & Filter Quick-Apply
-
-- **Dedicated Preferences Management (`/preferences`)**:
-  - Full configuration across 7 search dimensions: Freshness (1, 4, 8, 12, 16, 24h), Experience level (`FRESHER`, `0_1`, `1_2`, `2_3`, `3_PLUS`, `ALL`), Match threshold slider (0–100%), Preferred locations (tag input & quick presets), Role type (`ALL`, `JOBS`, `INTERNSHIPS`), Source boards (`LINKEDIN`, `NAUKRI`, `INTERNSHALA`, `INDEED`), and Excluded companies list.
-  - Dual-layer persistence: Instant client-side `localStorage` (`job_search_ai_preferences_v1`) paired with transactional PostgreSQL backend synchronization.
-- **Filter Quick-Apply ("My Preferences" Button)**:
-  - Accessible directly on the Job Discovery Radar (`/jobs`) filter toolbar.
-  - Single-click population and triggering of active search filters matching stored user preferences, including discrete freshness sync, role filter, experience level, location pills, minimum score threshold, and excluded companies.
+```json
+{
+  "mcpServers": {
+    "job-agent-india": {
+      "command": "/path/to/backend/.venv/bin/python",
+      "args": ["/path/to/mcp-server/server.py"]
+    }
+  }
+}
+```
 
 ---
 
 ## Testing & Verification
- 
-Run backend unit and integration test suite:
-```bash
-# Backend unit & integration test suite (93+ tests)
-make test
-# or: backend/.venv/bin/pytest backend/tests/ tests/test_freshness.py tests/test_dedup.py tests/test_normalization.py -v
 
-# Full suite including live DB integration tests (requires docker compose up -d postgres redis)
-backend/.venv/bin/pytest tests/ backend/tests/ -v
+The codebase includes an automated test suite covering database operations, normalization logic, deduplication, freshness enforcement, matching algorithms, and fault recovery.
+
+Run backend test suite:
+```bash
+backend/.venv/bin/python -m pytest backend/tests/ -v
 ```
 
-Frontend production build check:
+Run frontend linting and production build:
 ```bash
-cd frontend && npm run build
-# 13/13 static pages compiled successfully (0 errors, 0 warnings)
+cd frontend
+npm run lint
+npm run build
+```
+
+Run CI pipeline tasks locally:
+```bash
+make ci
 ```
 
 ---
 
-## Documentation Links
+## License
 
-- [Development & Onboarding Guide](docs/development_guide.md)
-- [Architecture Overview](docs/architecture.md)
-- [AI & Matching Engine Formulation](docs/ai_architecture.md)
-- [Crawling, Scraping & Ingestion Pipeline](docs/crawling_and_ingestion.md)
-- [Contributing Guidelines](CONTRIBUTING.md)
-- [License (MIT)](LICENSE)
+This project is licensed under the [MIT License](LICENSE).
