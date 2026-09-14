@@ -1,3 +1,5 @@
+import hashlib
+import json
 import math
 import re
 import uuid
@@ -809,7 +811,6 @@ class MatchingService:
     def compute_profile_version(profile: CandidateProfile | None) -> str:
         if not profile:
             return "none"
-        import hashlib, json
         data = {
             "skills": sorted([s.lower().strip() for s in (profile.skills or [])]),
             "target_roles": sorted([r.lower().strip() for r in (profile.target_roles or [])]),
@@ -824,7 +825,6 @@ class MatchingService:
 
     @staticmethod
     def compute_job_version(job: Job) -> str:
-        import hashlib, json
         data = {
             "title": (job.title or "").strip().lower(),
             "role_category": (job.role_category or "").strip().lower(),
@@ -845,7 +845,6 @@ class MatchingService:
     def compute_preference_version(preferences: Preference | None) -> str:
         if not preferences:
             return "default"
-        import hashlib, json
         data = {
             "priority_companies": sorted([c.lower().strip() for c in (preferences.priority_companies or [])]),
             "excluded_companies": sorted([c.lower().strip() for c in (preferences.excluded_companies or [])]),
