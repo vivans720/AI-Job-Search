@@ -16,38 +16,43 @@ An intelligent job discovery and recommendation engine tailored for the Indian t
 
 ```mermaid
 flowchart TD
-    subgraph Ingestion["1. Multi-Source Ingestion Engine"]
-        IN[Internshala Adapter] -->|Stealth Playwright + HTTP| RAW[Raw Job Listings]
-        NK[Naukri Adapter] -->|__NEXT_DATA__ + DOM| RAW
-        LI[LinkedIn Adapter] -->|Guest API + Crawl4AI| RAW
-        C4[Crawl4AI Provider] -.->|Fallback Browser Engine| LI
-        TOR[Tor SOCKS5 Proxy] -.->|Fallback on 403 / 429| Ingestion
+    subgraph Sources["Job Sources & Scrapers"]
+        IN["Internshala Adapter (Playwright + HTTP)"]
+        NK["Naukri Adapter (__NEXT_DATA__ + DOM)"]
+        LI["LinkedIn Adapter (Guest API + Crawl4AI)"]
+        C4["Crawl4AI Provider"] -.->|Render Fallback| LI
+        TOR["Tor SOCKS5 Proxy"] -.->|Fallback on 403/429| HTTP["HTTP / Scraping Layer"]
+        HTTP --> IN
+        HTTP --> NK
+        HTTP --> LI
     end
 
-    subgraph Processing["2. Processing & Normalization Pipeline"]
-        RAW --> DEDUP[Deduplication & Hash Verification]
-        DEDUP --> FRESH[Strict 24h Freshness Filter IST]
-        FRESH --> SKILLS[Skill Extraction: Regex + LLM Fallback]
-        SKILLS --> EMBED[Local Vector Embedding ONNX 384d]
+    subgraph Pipeline["Ingestion & Processing"]
+        IN --> RAW["Raw Job Records"]
+        NK --> RAW
+        LI --> RAW
+        RAW --> DEDUP["Deduplication & Hash Check"]
+        DEDUP --> FRESH["24h Freshness Filter (IST)"]
+        FRESH --> SKILLS["Skill Extraction (Regex + LLM)"]
+        SKILLS --> EMBED["Local Vector Embeddings (FastEmbed 384d)"]
     end
 
-    subgraph Storage["3. Persistence & Queuing"]
-        EMBED --> PG[(PostgreSQL 16 + pgvector)]
-        REDIS[(Redis 7)] <-->|Task Queue & Cache| WORKER[Async Background Worker]
-        WORKER --> Processing
+    subgraph Storage["Storage & Queue"]
+        EMBED --> PG[("PostgreSQL 16 + pgvector")]
+        REDIS[("Redis 7 (Task Queue & Cache)")] <--> WORKER["Background Worker"]
+        WORKER --> Pipeline
     end
 
-    subgraph Scoring["4. Skill-First Matching Engine"]
-        PG --> MATCH[6-Dimension Deterministic Scorer]
-        CAND[Candidate Profile & Resume] --> MATCH
-        PREF[User Search Preferences] --> MATCH
+    subgraph Matching["Matching Engine"]
+        PG --> MATCH["6-Dimension Deterministic Scorer"]
+        PROFILE["Candidate Profile & Preferences"] --> MATCH
     end
 
-    subgraph Interfaces["5. Client & Agent Interfaces"]
-        MATCH --> API[FastAPI Backend REST API]
-        API <--> WEB[Next.js 15.1 Web Dashboard]
-        API <--> MCP[FastMCP Server stdio / SSE]
-        MCP <--> AGENT[Hermes / Claude / AI Agent]
+    subgraph Interfaces["Delivery Interfaces"]
+        MATCH --> API["FastAPI Backend REST API"]
+        API <--> WEB["Next.js 15.1 Web Dashboard"]
+        API <--> MCP["FastMCP Server (stdio / SSE)"]
+        MCP <--> AGENT["AI Agents (Hermes / Claude)"]
     end
 ```
 
