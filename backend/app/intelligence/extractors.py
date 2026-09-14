@@ -14,7 +14,8 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.intelligence.llm_provider import LLMProvider, get_llm_provider
+from app.intelligence.base import BaseAIProvider
+from app.intelligence.llm_provider import get_llm_provider
 from app.intelligence.service import AIService
 from app.intelligence.schemas import CandidateProfileOutput, JobEnrichmentOutput
 from app.models.job import Job
@@ -57,7 +58,7 @@ def extract_text_from_bytes(file_bytes: bytes, filename: str) -> str:
 
 
 async def extract_candidate_profile_from_text(
-    resume_text: str, llm: LLMProvider | None = None
+    resume_text: str, llm: BaseAIProvider | None = None
 ) -> dict[str, Any]:
     """Phase 40: Structured candidate intelligence extraction via AIService returning dictionary representation."""
     service = AIService(provider=llm)

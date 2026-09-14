@@ -19,11 +19,6 @@ from app.intelligence.providers.openrouter_provider import OpenRouterProvider
 
 logger = structlog.get_logger(__name__)
 
-# Backward compatibility aliases
-LLMProvider = BaseAIProvider
-OllamaLLM = OllamaProvider
-OmniRouteLLM = OpenAIProvider
-
 _cached_providers: dict[str, BaseAIProvider] = {}
 
 
@@ -117,15 +112,6 @@ def _instantiate_single_provider(
             api_key=api_key,
             model=model,
             timeout=timeout,
-        )
-
-    elif name in ("deepseek",):
-        return OpenAIProvider(
-            base_url=base_url or settings.DEEPSEEK_BASE_URL,
-            api_key=api_key or settings.DEEPSEEK_API_KEY,
-            model=model or settings.DEEPSEEK_MODEL,
-            timeout=timeout or settings.DEEPSEEK_TIMEOUT,
-            provider_name="deepseek",
         )
 
     elif name in ("openai-compatible", "openai_compatible", "generic", "vllm", "omniroute", "custom"):

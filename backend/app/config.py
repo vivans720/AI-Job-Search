@@ -29,12 +29,6 @@ class Settings(BaseSettings):
     # Experience
     EXPERIENCE_MAX_YEARS: int = 2
 
-    # Search Limits
-    MAX_SEARCH_ITERATIONS: int = 3
-    MAX_RAW_JOBS_PER_SOURCE: int = 100
-    MAX_JOBS_FOR_LLM_ANALYSIS: int = 15
-    TOP_N_RESULTS: int = 10
-
     # Matching Weights (Skill-First Architecture)
     WEIGHT_REQUIRED_SKILL_MATCH: float = 0.65
     WEIGHT_PREFERRED_SKILL_MATCH: float = 0.10
@@ -77,12 +71,6 @@ class Settings(BaseSettings):
     # Fallback Provider Configuration
     LLM_FALLBACK_PROVIDER: str | None = None
     LLM_FALLBACK_MODEL: str | None = None
-
-    # DeepSeek
-    DEEPSEEK_API_KEY: str = ""
-    DEEPSEEK_MODEL: str = "deepseek-chat"
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
-    DEEPSEEK_TIMEOUT: float = 45.0
 
     # Groq
     GROQ_API_KEY: str = ""
