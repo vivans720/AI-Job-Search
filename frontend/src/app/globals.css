@@ -1,45 +1,110 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: #090a0f;
-    --foreground: #f4f4f5;
+    --background: #f8f9fc;
+    --foreground: #090d16;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-size: 16px;
   }
 
   body {
-    color: var(--foreground);
+    color: #0f172a;
     background-color: var(--background);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     letter-spacing: -0.011em;
+    line-height: 1.5;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: #090d16;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+    font-weight: 700;
+  }
+
+  p {
+    text-wrap: pretty;
+    line-height: 1.55;
+  }
+
+  ::selection {
+    background-color: rgba(5, 150, 105, 0.2);
+    color: #064e3b;
+  }
+
+  input, textarea, select {
+    caret-color: #059669;
+    color: #0f172a;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(5, 150, 105, 0.7);
+    outline-offset: 2px;
   }
 }
 
-/* Custom sleek scrollbar */
+/* Custom sleek scrollbar for light theme */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #090a0f;
+  background: #f1f5f9;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #272a38;
+  background: #cbd5e1;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #393e52;
+  background: #94a3b8;
 }
 
-/* Tabular figures for scores & numbers */
+/* Tabular figures for numbers & scores */
 .font-tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* Hairline borders & subtle surface styling */
+.border-hairline {
+  border-width: 1px;
+  border-color: rgba(226, 232, 240, 0.9);
+}
+
+.border-hairline-light {
+  border-width: 1px;
+  border-color: rgba(203, 213, 225, 0.8);
+}
+
+/* Emil Kowalski responsive press feedback */
+.press-subtle {
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), background-color 160ms ease-out, border-color 160ms ease-out;
+}
+.press-subtle:active {
+  transform: scale(0.98);
+}
+
+.shadow-card-subtle {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.02);
+}
+
+.shadow-card-hover {
+  box-shadow: 0 6px 18px -3px rgba(15, 23, 42, 0.07), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+}
+
+
+
 

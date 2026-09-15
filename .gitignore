@@ -105,8 +105,16 @@ Thumbs.db
 *.swo
 *~
 
-# ── Claude Code / Agent Tooling ──
+# ── Claude Code / Agent Tooling & Impeccable ──
 .agents/
+.claude/
+.codex/
+.impeccable/
+.impeccable*
+*impeccable*
+.github/skills/impeccable/
+.github/agents/impeccable*
+.github/hooks/impeccable*
 skills-lock.json
 
 # ── One-Off Reports & Research Docs ──

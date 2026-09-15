@@ -974,7 +974,10 @@ class MatchingService:
                 and existing.job_version == j_ver
                 and existing.preference_version == pref_ver
             ):
-                # Cache hit: reconstruct eval_data dict
+                req_skills_list = job.required_skills or []
+                pref_skills_list = job.preferred_skills or []
+                matched_set = set(existing.matched_skills or [])
+
                 eval_res = {
                     "overall_score": existing.overall_score,
                     "skill_score": existing.skill_score,
@@ -986,8 +989,14 @@ class MatchingService:
                     "matched_skills": existing.matched_skills,
                     "missing_skills": existing.missing_skills,
                     "transferable_skills": existing.transferable_skills,
-                    "required_skills": job.required_skills or [],
-                    "preferred_skills": job.preferred_skills or [],
+                    "required_skills": {
+                        "matched": [s for s in req_skills_list if s in matched_set],
+                        "missing": [s for s in req_skills_list if s not in matched_set],
+                    } if req_skills_list else None,
+                    "preferred_skills": {
+                        "matched": [s for s in pref_skills_list if s in matched_set],
+                        "missing": [s for s in pref_skills_list if s not in matched_set],
+                    } if pref_skills_list else None,
                     "transferable_details": [],
                     "experience_eligible": True,
                     "location_eligible": True,

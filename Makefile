@@ -22,7 +22,7 @@ help:
 
 
 setup:
-	@cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/playwright install chromium
+	@cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt && .venv/bin/playwright install chromium
 	@cd frontend && npm install
 
 docker-up:
@@ -35,8 +35,7 @@ docker-logs:
 	@docker compose logs -f
 
 db-up:
-	@docker compose up -d postgres
-
+	@docker compose up -d postgres redis
 
 db-down:
 	@docker compose down
@@ -66,7 +65,7 @@ mcp:
 	@backend/.venv/bin/python3 mcp-server/server.py
 
 test:
-	@backend/.venv/bin/python3 -m pytest backend/tests/ tests/test_freshness.py tests/test_dedup.py tests/test_normalization.py -v
+	@PYTHONPATH=backend backend/.venv/bin/python3 -m pytest backend/tests/ -v
 
 lint:
 	@if [ -x backend/.venv/bin/ruff ]; then backend/.venv/bin/ruff check backend/; else echo "ruff not installed in .venv; running flake8 or skipping"; fi

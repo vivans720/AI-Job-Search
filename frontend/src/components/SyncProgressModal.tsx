@@ -268,29 +268,29 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-obsidian-950/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-xl rounded-2xl bg-obsidian-900 border border-white/[0.12] shadow-2xl overflow-hidden font-sans text-zinc-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in">
+      <div className="relative w-full max-w-xl rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden font-sans text-slate-800">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-obsidian-950/60">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600">
               <RefreshCw className={`w-4 h-4 ${status !== "completed" ? "animate-spin" : ""}`} />
             </div>
             <div>
-              <h3 className="text-sm font-semibold tracking-tight text-white flex items-center gap-2">
+              <h3 className="text-sm font-semibold tracking-tight text-slate-900 flex items-center gap-2">
                 Ingestion Pipeline Telemetry
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.06] text-zinc-400 uppercase">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 uppercase font-bold">
                   {status}
                 </span>
               </h3>
-              <p className="text-[11px] text-zinc-400 font-mono">
+              <p className="text-[11px] text-slate-500 font-mono">
                 Real-time crawl, parse, freshness gate & 5-level dedup
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -299,8 +299,8 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
         {/* Modal Content */}
         <div className="p-6 space-y-6">
           {/* Per-source progress bars */}
-          <div className="space-y-4">
-            <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-400">
+          <div className="space-y-3.5">
+            <h4 className="text-[11px] font-mono uppercase tracking-wider text-slate-500 font-bold">
               Live Source Crawlers
             </h4>
 
@@ -318,15 +318,15 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
               return (
                 <div
                   key={srcKey}
-                  className="p-3.5 rounded-xl bg-obsidian-950/50 border border-white/[0.06] space-y-2.5"
+                  className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5"
                 >
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-zinc-200 capitalize flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span className="font-semibold text-slate-800 capitalize flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                       {srcKey}
                     </span>
                     <div className="flex items-center gap-3">
-                      <span className="text-[11px] font-mono text-zinc-400">
+                      <span className="text-[11px] font-mono text-slate-500 font-tabular">
                         {sp.discovered} found
                       </span>
                       {getSourceStatusBadge(sp.status)}
@@ -334,7 +334,7 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
                   </div>
 
                   {/* Visual Bar */}
-                  <div className="h-2 w-full rounded-full bg-obsidian-800 overflow-hidden relative">
+                  <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden relative">
                     <div
                       className={`h-full transition-all duration-500 rounded-full ${
                         sp.status === "success"
@@ -343,7 +343,7 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
                           ? "bg-amber-500"
                           : sp.status === "failed"
                           ? "bg-rose-500"
-                          : "bg-gradient-to-r from-emerald-500 to-cyan-400 animate-pulse"
+                          : "bg-emerald-600 animate-pulse"
                       }`}
                       style={{ width: `${pct}%` }}
                     />
@@ -353,68 +353,66 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
             })}
           </div>
 
-          {/* Phase 43 Pipeline Flow Architecture Badges */}
-          <div className="p-3.5 rounded-xl bg-obsidian-950/60 border border-white/[0.08] space-y-2">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-semibold block">
-              Phase 43 — Job Intelligence Pipeline Architecture
+          {/* Pipeline Flow Architecture Badges */}
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-700 font-bold block">
+              Automated Ingestion Sequence
             </span>
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-zinc-400">
-              <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">1. Parser</span>
-              <span className="text-zinc-600">→</span>
-              <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">2. Normalizer</span>
-              <span className="text-zinc-600">→</span>
-              <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">3. Freshness</span>
-              <span className="text-zinc-600">→</span>
-              <span className="px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.08]">4. Dedup L1-4</span>
-              <span className="text-zinc-600">→</span>
-              <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">5. AI Extraction</span>
-              <span className="text-zinc-600">→</span>
-              <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">6. BGE 384d</span>
-              <span className="text-zinc-600">→</span>
-              <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">7. Savepoint Persist</span>
-              <span className="text-zinc-600">→</span>
-              <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">8. Match Scoring</span>
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-600">
+              <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 shadow-xs">1. Crawl</span>
+              <span className="text-slate-300">·</span>
+              <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 shadow-xs">2. Normalizer</span>
+              <span className="text-slate-300">·</span>
+              <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 shadow-xs">3. Freshness Gate</span>
+              <span className="text-slate-300">·</span>
+              <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 shadow-xs">4. Cross-Dedup</span>
+              <span className="text-slate-300">·</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">5. Skills Extraction</span>
+              <span className="text-slate-300">·</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">6. BGE Vector</span>
+              <span className="text-slate-300">·</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold">7. 6D Match</span>
             </div>
           </div>
 
-          {/* Phase 38 & Phase 43 Ingestion Stage Metrics Grid */}
+          {/* Ingestion Stage Metrics Grid */}
           <div>
-            <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-400 mb-3">
+            <h4 className="text-[11px] font-mono uppercase tracking-wider text-slate-500 mb-2.5 font-bold">
               Ingestion Funnel Telemetry
             </h4>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-              <div className="p-3 rounded-xl bg-obsidian-950/70 border border-white/[0.06] text-center">
-                <span className="block text-[10px] uppercase font-mono text-zinc-400">Discovered</span>
-                <span className="text-base font-bold font-tabular text-zinc-100">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                <span className="block text-[10px] uppercase font-mono text-slate-500 font-semibold">Discovered</span>
+                <span className="text-sm font-bold font-tabular text-slate-900">
                   {totals.discovered.toLocaleString()}
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-obsidian-950/70 border border-white/[0.06] text-center">
-                <span className="block text-[10px] uppercase font-mono text-emerald-400">New Saved</span>
-                <span className="text-base font-bold font-tabular text-emerald-400">
+              <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200 text-center">
+                <span className="block text-[10px] uppercase font-mono text-emerald-700 font-semibold">New Saved</span>
+                <span className="text-sm font-bold font-tabular text-emerald-700">
                   {totals.newSaved.toLocaleString()}
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-obsidian-950/70 border border-white/[0.06] text-center">
-                <span className="block text-[10px] uppercase font-mono text-cyan-400">Updated</span>
-                <span className="text-base font-bold font-tabular text-cyan-400">
+              <div className="p-3 rounded-xl bg-sky-50/60 border border-sky-200 text-center">
+                <span className="block text-[10px] uppercase font-mono text-sky-700 font-semibold">Updated</span>
+                <span className="text-sm font-bold font-tabular text-sky-700">
                   {totals.updated.toLocaleString()}
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-obsidian-950/70 border border-white/[0.06] text-center">
-                <span className="block text-[10px] uppercase font-mono text-amber-400">Duplicates</span>
-                <span className="text-base font-bold font-tabular text-amber-400">
+              <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200 text-center">
+                <span className="block text-[10px] uppercase font-mono text-amber-700 font-semibold">Duplicates</span>
+                <span className="text-sm font-bold font-tabular text-amber-700">
                   {totals.duplicates.toLocaleString()}
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-obsidian-950/70 border border-white/[0.06] text-center">
-                <span className="block text-[10px] uppercase font-mono text-rose-400">Rejected</span>
-                <span className="text-base font-bold font-tabular text-rose-400">
+              <div className="p-3 rounded-xl bg-rose-50/60 border border-rose-200 text-center">
+                <span className="block text-[10px] uppercase font-mono text-rose-700 font-semibold">Rejected</span>
+                <span className="text-sm font-bold font-tabular text-rose-700">
                   {totals.rejected.toLocaleString()}
                 </span>
               </div>
@@ -422,7 +420,7 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
           </div>
 
           {error && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -430,13 +428,13 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-t border-white/[0.08] bg-obsidian-950/60 text-xs">
-          <span className="text-zinc-500 font-mono text-[11px]">
+        <div className="flex items-center justify-between px-6 py-3.5 border-t border-slate-200 bg-slate-50 text-xs">
+          <span className="text-slate-500 font-mono text-[11px]">
             {status === "completed" ? "Ingestion complete" : "Syncing in background worker..."}
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.12] text-zinc-200 font-medium transition-colors"
+            className="px-4 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold transition-colors shadow-xs"
           >
             {status === "completed" ? "Done" : "Dismiss"}
           </button>

@@ -25,6 +25,7 @@ class Job(Base):
         UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
     )
     company_name: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    company_logo_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 
     description: Mapped[str] = mapped_column(Text, nullable=False)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)

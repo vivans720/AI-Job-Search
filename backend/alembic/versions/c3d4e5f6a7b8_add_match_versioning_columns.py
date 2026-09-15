@@ -18,15 +18,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('matches', sa.Column('algorithm_version', sa.String(length=32), nullable=True))
-    op.add_column('matches', sa.Column('profile_version', sa.String(length=64), nullable=True))
-    op.add_column('matches', sa.Column('preference_version', sa.String(length=64), nullable=True))
-    op.add_column('matches', sa.Column('job_version', sa.String(length=64), nullable=True))
+    conn = op.get_bind()
+    conn.execute(sa.text("""
+        ALTER TABLE matches
+        ADD COLUMN IF NOT EXISTS algorithm_version VARCHAR(32),
+        ADD COLUMN IF NOT EXISTS profile_version VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS preference_version VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS job_version VARCHAR(64);
+    """))
 
-    op.create_index(op.f('ix_matches_algorithm_version'), 'matches', ['algorithm_version'], unique=False)
-    op.create_index(op.f('ix_matches_profile_version'), 'matches', ['profile_version'], unique=False)
-    op.create_index(op.f('ix_matches_preference_version'), 'matches', ['preference_version'], unique=False)
-    op.create_index(op.f('ix_matches_job_version'), 'matches', ['job_version'], unique=False)
+    conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_matches_algorithm_version ON matches (algorithm_version);"))
+    conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_matches_profile_version ON matches (profile_version);"))
+    conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_matches_preference_version ON matches (preference_version);"))
+    conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_matches_job_version ON matches (job_version);"))
 
 
 def downgrade() -> None:

@@ -9,6 +9,7 @@ class JobListItem(BaseModel):
     id: str
     title: str
     company: str
+    company_logo_url: str | None = None
     location: str | None = None
     normalized_location: str | None = None
     remote_type: str = "ONSITE"

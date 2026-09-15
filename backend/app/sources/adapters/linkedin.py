@@ -84,6 +84,13 @@ LINKEDIN_SELECTORS = {
         ".decorated-job-posting__details",
         ".jobs-description__content",
     ],
+    "logo": [
+        "img.artdeco-entity-image",
+        "img.job-search-card__logo-image",
+        "img.company-logo",
+        "img[alt*='logo' i]",
+        ".search-entity-media img",
+    ],
 }
 
 GUEST_HEADERS = {
@@ -551,6 +558,22 @@ class LinkedInAdapter(JobSource):
                 else f"{raw_title} opportunity at {company} in {location}."
             )
 
+            logo_el = None
+            for sel in LINKEDIN_SELECTORS["logo"]:
+                match = card.select_one(sel)
+                if match:
+                    logo_el = match
+                    break
+            company_logo_url = None
+            if logo_el:
+                company_logo_url = (
+                    logo_el.get("src")
+                    or logo_el.get("data-delayed-url")
+                    or logo_el.get("data-ghost-url")
+                )
+                if company_logo_url and company_logo_url.startswith("data:image"):
+                    company_logo_url = None
+
             dedup_key = job_id or app_url
             if dedup_key in seen_ids:
                 continue
@@ -563,6 +586,7 @@ class LinkedInAdapter(JobSource):
                 "location": location,
                 "posted_time_raw": posted_time_raw,
                 "datetime": datetime_attr,
+                "company_logo_url": company_logo_url,
                 "source_url": app_url,
             }
 
@@ -572,6 +596,7 @@ class LinkedInAdapter(JobSource):
                     source_job_id=job_id,
                     title=raw_title,
                     company_name=company,
+                    company_logo_url=company_logo_url,
                     description=description,
                     location=location,
                     remote_type=remote_type,
@@ -996,6 +1021,7 @@ class LinkedInAdapter(JobSource):
             role_category=role_category,
             company_name=raw.company_name,
             normalized_company=norm_company,
+            company_logo_url=raw.company_logo_url,
             description=raw.description,
             location=raw.location,
             normalized_location=norm_loc,

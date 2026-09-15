@@ -16,6 +16,7 @@ class Company(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     website: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    logo_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     industry: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

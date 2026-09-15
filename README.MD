@@ -279,7 +279,7 @@ Install Python dependencies and Playwright browser:
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 playwright install chromium
 cd ..
 ```

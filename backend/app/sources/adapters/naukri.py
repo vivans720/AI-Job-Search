@@ -104,6 +104,7 @@ NAUKRI_HTML_SELECTORS = {
     "description": [".job-desc", ".job-description", ".desc"],
     "posted_time": [".job-post-day", ".date", ".badge"],
     "skills": ["ul.tags-gt li", "ul.tags li", ".tag-li"],
+    "logo": [".comp-logo img", ".logoImage img", "img.logoImage", "img.comp-logo", ".comp-dtls-wrap img"],
 }
 
 
@@ -412,12 +413,23 @@ class NaukriAdapter(JobSource):
             elif isinstance(tags, str):
                 skills_list = [s.strip() for s in tags.split(",") if s.strip()]
 
+            # Company Logo
+            company_logo_url = (
+                job.get("logoPath")
+                or job.get("companyLogo")
+                or job.get("logo")
+                or job.get("companyLogoUrl")
+            )
+            if company_logo_url and not company_logo_url.startswith("http"):
+                company_logo_url = urljoin(BASE_URL, company_logo_url)
+
             results.append(
                 RawJob(
                     source=self.source_name,
                     source_job_id=job_id,
                     title=title,
                     company_name=company,
+                    company_logo_url=company_logo_url,
                     description=desc,
                     location=location,
                     remote_type=remote_type,
@@ -431,6 +443,7 @@ class NaukriAdapter(JobSource):
                         "skills": skills_list,
                         "createdDate": created_date,
                         "jobDetails": job,
+                        "company_logo_url": company_logo_url,
                     },
                 )
             )
@@ -543,8 +556,17 @@ class NaukriAdapter(JobSource):
                         if txt and txt not in skills_list:
                             skills_list.append(txt)
 
+            # 9. Company Logo
+            logo_el = _select_first(card, NAUKRI_HTML_SELECTORS["logo"])
+            company_logo_url = None
+            if logo_el:
+                c_src = logo_el.get("src") or logo_el.get("data-src")
+                if c_src and not c_src.startswith("data:image"):
+                    company_logo_url = urljoin(BASE_URL, c_src)
+
             raw_payload = {
                 "skills": skills_list,
+                "company_logo_url": company_logo_url,
             }
 
             results.append(
@@ -553,6 +575,7 @@ class NaukriAdapter(JobSource):
                     source_job_id=str(job_id),
                     title=title,
                     company_name=company,
+                    company_logo_url=company_logo_url,
                     description=desc,
                     location=location,
                     remote_type=remote_type,
@@ -845,6 +868,7 @@ class NaukriAdapter(JobSource):
             normalized_title=norm_title,
             company_name=raw.company_name,
             normalized_company=norm_company,
+            company_logo_url=raw.company_logo_url,
             description=desc,
             role_category=category,
             required_skills=required_skills,

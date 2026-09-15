@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SkillPartition(BaseModel):
@@ -34,6 +34,13 @@ class MatchBreakdown(BaseModel):
     confidence_label: str = "HIGH"
     explanation: str | None = None
     recommendation: str  # STRONG_MATCH, GOOD_MATCH, CONSIDER, LOW_PRIORITY, SKIP
+
+    @field_validator("required_skills", "preferred_skills", mode="before")
+    @classmethod
+    def coerce_skill_partition(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            return SkillPartition(matched=[], missing=v) if v else None
+        return v
 
 
 class TransferableMatchItem(BaseModel):

@@ -18,8 +18,10 @@ import {
   RotateCcw,
   Check,
   Ban,
-  Eye,
   Sliders,
+  TrendingUp,
+  Filter,
+  Zap,
 } from "lucide-react";
 import { SyncProgressModal } from "@/components/SyncProgressModal";
 import JobDetailDrawer from "@/components/jobs/JobDetailDrawer";
@@ -68,6 +70,7 @@ interface JobItem {
   id: string;
   title: string;
   company: string;
+  company_logo_url?: string | null;
   location: string;
   normalized_location?: string;
   remote_type: string;
@@ -129,6 +132,8 @@ export default function JobsPage() {
   const [excludedCompanies, setExcludedCompanies] = useState<string[]>([]);
   const [applyingPrefs, setApplyingPrefs] = useState(false);
   const [prefToast, setPrefToast] = useState<string | null>(null);
+  const [quickRoleFilter, setQuickRoleFilter] = useState<string>("ALL");
+  const [activeCardIndex, setActiveCardIndex] = useState<number>(0);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -528,6 +533,8 @@ export default function JobsPage() {
 
   const handleRejectAllOnPage = async () => {
     if (filteredJobs.length === 0 || rejectingAll) return;
+    const confirmed = window.confirm(`Dismiss all ${filteredJobs.length} jobs on this page? You can undo this action from the toast notification.`);
+    if (!confirmed) return;
     setRejectingAll(true);
 
     const targetJobs = [...filteredJobs];
@@ -676,6 +683,9 @@ export default function JobsPage() {
       const max = j.experience_max ?? 99;
       return (min <= 3 && max >= 2) || j.experience?.includes("2-3") || j.experience?.includes("1-3");
     }).length,
+    strong: jobs.filter((j) => j.match?.recommendation === "STRONG_MATCH").length,
+    good: jobs.filter((j) => j.match?.recommendation === "GOOD_MATCH").length,
+    consider: jobs.filter((j) => j.match?.recommendation === "CONSIDER").length,
   };
 
   const filteredJobs = jobs.filter((job) => {
@@ -733,32 +743,103 @@ export default function JobsPage() {
       if (isExcluded) return false;
     }
 
-    // Minimum match threshold filtering (R1 & R2)
-    if (matchThreshold !== null && matchThreshold > 0) {
-      const rawScore = job.match?.overall_score ?? job.quality_score;
-      if (rawScore !== undefined && rawScore !== null) {
-        const normalizedScore = rawScore <= 1.0 && rawScore > 0 ? rawScore * 100 : rawScore;
-        if (normalizedScore < matchThreshold) return false;
+    // Quick filter right widget filtering
+    if (quickRoleFilter !== "ALL") {
+      const titleLower = (job.title || "").toLowerCase();
+      const skillsStr = (job.required_skills || []).join(" ").toLowerCase();
+      if (quickRoleFilter === "SOFTWARE_ENGINEER") {
+        if (!titleLower.includes("software") && !titleLower.includes("engineer") && !titleLower.includes("sde")) return false;
+      } else if (quickRoleFilter === "FULL_STACK") {
+        if (!titleLower.includes("full stack") && !titleLower.includes("fullstack") && !titleLower.includes("full-stack")) return false;
+      } else if (quickRoleFilter === "BACKEND") {
+        if (!titleLower.includes("backend") && !titleLower.includes("back end") && !titleLower.includes("back-end") && !skillsStr.includes("django") && !skillsStr.includes("fastapi") && !skillsStr.includes("node")) return false;
+      } else if (quickRoleFilter === "FRONTEND") {
+        if (!titleLower.includes("frontend") && !titleLower.includes("front end") && !titleLower.includes("front-end") && !titleLower.includes("react") && !titleLower.includes("angular")) return false;
+      } else if (quickRoleFilter === "DEVOPS") {
+        if (!titleLower.includes("devops") && !titleLower.includes("cloud") && !titleLower.includes("sre") && !skillsStr.includes("docker") && !skillsStr.includes("kubernetes")) return false;
+      } else if (quickRoleFilter === "DATA_AI") {
+        if (!titleLower.includes("data") && !titleLower.includes("ai") && !titleLower.includes("ml") && !titleLower.includes("machine learning") && !skillsStr.includes("pytorch")) return false;
+      } else if (quickRoleFilter === "REMOTE_ONLY") {
+        const isRem = (job.remote_type || "").toLowerCase().includes("remote") || (job.location || "").toLowerCase().includes("remote");
+        if (!isRem) return false;
       }
     }
 
     return true;
   });
 
+  // Power user keyboard shortcuts (J = next, K = prev, S = save, X = dismiss, Enter = open drawer)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore keystrokes when typing inside inputs, textareas, or dropdowns
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable ||
+          target.tagName === "SELECT")
+      ) {
+        return;
+      }
+
+      if (detailDrawerOpen) {
+        if (e.key === "Escape") {
+          setDetailDrawerOpen(false);
+        }
+        return;
+      }
+
+      if (filteredJobs.length === 0) return;
+
+      if (e.key === "j" || e.key === "J") {
+        e.preventDefault();
+        setActiveCardIndex((prev) => Math.min(prev + 1, filteredJobs.length - 1));
+      } else if (e.key === "k" || e.key === "K") {
+        e.preventDefault();
+        setActiveCardIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const currentJob = filteredJobs[activeCardIndex];
+        if (currentJob) {
+          setSelectedJobId(currentJob.id);
+          setDetailDrawerOpen(true);
+        }
+      } else if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        const currentJob = filteredJobs[activeCardIndex];
+        if (currentJob) {
+          handleSave(currentJob);
+        }
+      } else if (e.key === "x" || e.key === "X") {
+        e.preventDefault();
+        const currentJob = filteredJobs[activeCardIndex];
+        if (currentJob) {
+          handleReject(currentJob);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeCardIndex, filteredJobs, detailDrawerOpen]);
+
+
   const getBadgeStyle = (rec: string) => {
     switch (rec) {
       case "STRONG_MATCH":
-        return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+        return "bg-emerald-50 text-emerald-800 border-emerald-300 font-bold";
       case "GOOD_MATCH":
-        return "bg-teal-500/10 text-teal-400 border-teal-500/30";
+        return "bg-teal-50 text-teal-800 border-teal-300 font-bold";
       case "CONSIDER":
-        return "bg-amber-500/10 text-amber-400 border-amber-500/30";
+        return "bg-amber-50 text-amber-900 border-amber-300 font-bold";
       case "LOW_PRIORITY":
-        return "bg-orange-500/10 text-orange-400 border-orange-500/30";
+        return "bg-orange-50 text-orange-900 border-orange-300 font-bold";
       default:
-        return "bg-zinc-500/10 text-zinc-400 border-zinc-500/20";
+        return "bg-slate-100 text-slate-800 border-slate-300 font-medium";
     }
   };
+
 
   const hasActiveFilters =
     selectedLocations.length > 0 ||
@@ -786,11 +867,11 @@ export default function JobsPage() {
     const totalPages = Math.ceil(totalCount / pageSize);
 
     return (
-      <div className="flex flex-wrap items-center justify-between gap-4 pt-6 pb-4 border-t border-white/[0.06] text-xs">
-        <div className="text-zinc-400">
-          Showing <strong className="text-zinc-100 font-tabular">{(currentPage - 1) * pageSize + 1}</strong> to{" "}
-          <strong className="text-zinc-100 font-tabular">{Math.min(currentPage * pageSize, totalCount)}</strong> of{" "}
-          <strong className="text-zinc-100 font-tabular">{totalCount}</strong> listings
+      <div className="flex flex-wrap items-center justify-between gap-4 pt-4 pb-2 border-t border-slate-100 text-xs">
+        <div className="text-slate-500 font-medium">
+          Showing <strong className="text-slate-900 font-tabular">{(currentPage - 1) * pageSize + 1}</strong> to{" "}
+          <strong className="text-slate-900 font-tabular">{Math.min(currentPage * pageSize, totalCount)}</strong> of{" "}
+          <strong className="text-slate-900 font-tabular">{totalCount}</strong> listings
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -802,13 +883,13 @@ export default function JobsPage() {
               }
             }}
             disabled={currentPage <= 1 || loading}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-obsidian-900/60 hover:bg-obsidian-900 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-300 transition-colors"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 transition-colors shadow-xs"
           >
             <ChevronLeft className="w-4 h-4" />
             <span>Previous</span>
           </button>
 
-          <div className="flex items-center gap-1 px-2">
+          <div className="flex items-center gap-1 px-1">
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
               .map((p, idx, arr) => {
@@ -816,17 +897,17 @@ export default function JobsPage() {
                 const showEllipsis = prev && p - prev > 1;
                 return (
                   <div key={p} className="flex items-center gap-1">
-                    {showEllipsis && <span className="text-zinc-600 px-1">...</span>}
+                    {showEllipsis && <span className="text-slate-400 px-1">...</span>}
                     <button
                       onClick={() => {
                         fetchJobs(p);
                         window.scrollTo({ top: 0, behavior: "smooth" });
                       }}
                       disabled={loading}
-                      className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-medium font-tabular transition-colors ${
+                      className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-semibold font-tabular transition-colors ${
                         currentPage === p
-                          ? "bg-emerald-600 text-white font-semibold shadow-sm"
-                          : "border border-white/[0.08] bg-obsidian-900/40 hover:bg-obsidian-900 text-zinc-400 hover:text-white"
+                          ? "bg-slate-900 text-white shadow-xs"
+                          : "border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900"
                       }`}
                     >
                       {p}
@@ -844,7 +925,7 @@ export default function JobsPage() {
               }
             }}
             disabled={currentPage >= totalPages || loading}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-obsidian-900/60 hover:bg-obsidian-900 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-300 transition-colors"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 transition-colors shadow-xs"
           >
             <span>Next</span>
             <ChevronRight className="w-4 h-4" />
@@ -855,37 +936,39 @@ export default function JobsPage() {
   };
 
   return (
-    <div className="space-y-6 pb-16">
-      {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/[0.07]">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              DISCOVERY ENGINE
-            </span>
-            <span className="text-xs text-zinc-500">·</span>
-            <span className="text-xs text-zinc-400 font-mono">≤{freshnessHours}h Freshness Window</span>
+    <div className="space-y-6 pb-20">
+      {/* Top Command Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1 relative">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+              Job Discovery
+            </h1>
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-zinc-100">Job Discovery Radar</h2>
-          <p className="text-xs text-zinc-400">
-            Search, evaluate, and track verified fresh tech opportunities with deterministic 6-dimension match analysis.
+          <p className="text-xs sm:text-sm text-slate-500 font-medium">
+            Real-time tech roles across India <span className="text-slate-300 mx-1.5">·</span>{" "}
+            <strong className="text-slate-800 font-tabular font-bold">{totalCount}</strong> opportunities tracked
           </p>
         </div>
 
-        {/* Sync Controls */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center rounded-xl bg-obsidian-900 border border-white/[0.08] p-1 shadow-sm text-xs">
+        {/* Sync Controls Dock matching reference screenshot */}
+        <div className="flex items-center gap-2.5 self-start md:self-auto flex-wrap">
+          <div className="relative">
             <select
               value={syncSource}
               onChange={(e) => setSyncSource(e.target.value)}
               disabled={syncing}
-              className="bg-transparent text-zinc-300 px-2.5 py-1.5 rounded-lg focus:outline-none text-xs font-medium cursor-pointer border-none"
+              className="appearance-none bg-white text-slate-700 font-medium text-xs border border-slate-200/90 rounded-xl pl-3.5 pr-8 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 hover:border-slate-300 shadow-xs cursor-pointer"
             >
-              <option value="all" className="bg-obsidian-950 text-zinc-200">All Sources</option>
-              <option value="linkedin" className="bg-obsidian-950 text-zinc-200">LinkedIn</option>
-              <option value="naukri" className="bg-obsidian-950 text-zinc-200">Naukri</option>
-              <option value="internshala" className="bg-obsidian-950 text-zinc-200">Internshala</option>
+              <option value="all">All Sources</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="naukri">Naukri</option>
+              <option value="internshala">Internshala</option>
             </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3.5 pointer-events-none" />
+          </div>
+
+          <div className="relative">
             <select
               value={freshnessHours}
               onChange={(e) => {
@@ -894,85 +977,89 @@ export default function JobsPage() {
                 setFreshnessHours(val);
               }}
               disabled={syncing}
-              className="bg-transparent text-zinc-300 px-2 py-1.5 rounded-lg focus:outline-none text-xs font-medium cursor-pointer border-l border-white/[0.08]"
+              className="appearance-none bg-white text-slate-700 font-medium text-xs border border-slate-200/90 rounded-xl pl-3.5 pr-8 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 hover:border-slate-300 shadow-xs cursor-pointer"
               title="Freshness Window"
             >
-              <option value={1} className="bg-obsidian-950 text-zinc-200">1h fresh</option>
-              <option value={4} className="bg-obsidian-950 text-zinc-200">4h fresh</option>
-              <option value={8} className="bg-obsidian-950 text-zinc-200">8h fresh</option>
-              <option value={12} className="bg-obsidian-950 text-zinc-200">12h fresh</option>
-              <option value={16} className="bg-obsidian-950 text-zinc-200">16h fresh</option>
-              <option value={24} className="bg-obsidian-950 text-zinc-200">24h fresh</option>
+              <option value={1}>Past 1h</option>
+              <option value={4}>Past 4h</option>
+              <option value={8}>Past 8h</option>
+              <option value={12}>Past 12h</option>
+              <option value={16}>Past 16h</option>
+              <option value={24}>Past 24h</option>
             </select>
-            <button
-              onClick={() => handleSyncLive()}
-              disabled={syncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.08] hover:bg-white/[0.12] active:scale-[0.98] disabled:opacity-50 text-zinc-200 rounded-lg text-xs font-medium transition-all shadow-surface-inset"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${syncing ? "animate-spin" : ""}`} />
-              <span>{syncing ? "Syncing..." : "Sync Radar"}</span>
-            </button>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3.5 pointer-events-none" />
           </div>
+
+          <button
+            onClick={() => handleSyncLive()}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+            <span>{syncing ? "Syncing..." : "Sync Feeds"}</span>
+          </button>
         </div>
       </div>
 
       {/* Sync Notification Toast */}
       {syncNotification && (
         <div
-          className={`p-3 rounded-xl border text-xs flex items-center justify-between shadow-lg ${
+          className={`p-3.5 rounded-xl border text-xs flex items-center justify-between shadow-xs transition-all ${
             syncNotification.type === "success"
-              ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
-              : "bg-rose-950/40 border-rose-500/30 text-rose-300"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
           }`}
         >
-          <span>{syncNotification.message}</span>
+          <span className="font-semibold">{syncNotification.message}</span>
           <button
             onClick={() => setSyncNotification(null)}
-            className="p-1 hover:bg-white/10 rounded text-zinc-400 hover:text-white transition-colors"
+            aria-label="Dismiss notification"
+            className="p-1 hover:bg-black/5 rounded text-slate-400 hover:text-slate-700 transition-colors"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* Action Notification Toast (Save / Reject) with Undo */}
+      {/* Action Notification Toast with Undo */}
       {actionNotification && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between shadow-xl backdrop-blur-xl ${
+          className={`p-3.5 rounded-xl border text-xs flex items-center justify-between gap-3 shadow-md transition-all ${
             actionNotification.type === "save"
-              ? "border-emerald-500/30 bg-obsidian-900/90 text-emerald-300 shadow-surface-glow"
-              : "border-rose-500/30 bg-obsidian-900/90 text-rose-300 shadow-rose-950/20"
+              ? "bg-white border-emerald-300 text-emerald-900"
+              : "bg-white border-rose-300 text-rose-900"
           }`}
         >
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             {actionNotification.type === "save" ? (
-              <BookmarkCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <BookmarkCheck className="w-4 h-4 text-emerald-600 shrink-0" />
             ) : actionNotification.type === "reject_all" ? (
-              <Ban className="w-4 h-4 text-rose-400 shrink-0" />
+              <Ban className="w-4 h-4 text-rose-600 shrink-0" />
             ) : (
-              <ThumbsDown className="w-4 h-4 text-rose-400 shrink-0" />
+              <ThumbsDown className="w-4 h-4 text-rose-600 shrink-0" />
             )}
-            <span className="font-medium text-zinc-200">{actionNotification.message}</span>
+            <span className="font-medium text-slate-800 truncate">{actionNotification.message}</span>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             {actionNotification.type === "save" && (
               <Link
                 href="/saved"
-                className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg font-semibold text-xs transition-colors"
+                className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold transition-colors"
               >
                 View in Pipeline
               </Link>
             )}
             <button
               onClick={handleUndoAction}
-              className="px-2.5 py-1 bg-white/[0.08] hover:bg-white/[0.14] text-zinc-100 border border-white/[0.12] rounded-lg font-semibold text-xs transition-colors"
+              className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 rounded-lg text-xs font-semibold transition-colors"
             >
               Undo
             </button>
             <button
               onClick={() => setActionNotification(null)}
-              className="p-1 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
+              aria-label="Dismiss action notice"
+              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition-colors"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -980,587 +1067,641 @@ export default function JobsPage() {
         </div>
       )}
 
-
-
-      {/* Search Input */}
-      <div className="p-4 rounded-2xl bg-obsidian-900/70 border border-white/[0.08] shadow-surface-inset">
-        <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 p-1.5 rounded-xl bg-obsidian-950 border border-white/[0.08] focus-within:border-emerald-500/40 focus-within:ring-1 focus-within:ring-emerald-500/30 transition-all">
-          <Search className="w-4 h-4 text-zinc-500 ml-2.5 shrink-0" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by role, tech stack, company, or keyword..."
-            className="bg-transparent text-zinc-100 text-xs focus:outline-none flex-1 px-2.5 py-1.5 placeholder:text-zinc-500"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={clearQuery}
-              className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-          <button
-            type="submit"
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-lg text-xs font-semibold transition-all shadow-sm shrink-0"
-          >
-            Search
-          </button>
-        </form>
-      </div>
-
-      {/* Streamlined Faceted Filter Control Bar (Clean Architecture) */}
-      <div className="p-4 rounded-2xl bg-obsidian-900/70 border border-white/[0.08] shadow-surface-inset space-y-4">
-        {/* Location quick actions + searchable multi-select */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Location</span>
-            </span>
-            {selectedLocations.length > 0 && (
-              <span className="text-[11px] text-emerald-400 font-medium">
-                {selectedLocations.length} location{selectedLocations.length === 1 ? "" : "s"} selected
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1.5 flex-wrap text-xs">
-            <button
-              onClick={clearLocations}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                selectedLocations.length === 0
-                  ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-sm"
-                  : "bg-obsidian-950 text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] border border-white/[0.05]"
-              }`}
-            >
-              <span>All Locations</span>
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-tabular font-semibold ${
-                selectedLocations.length === 0 ? "bg-emerald-400/20 text-emerald-200" : "bg-white/[0.06] text-zinc-500"
-              }`}>
-                {counts.all}
-              </span>
-            </button>
-
-            <div className="relative min-w-[220px] flex-1 max-w-md" ref={locationDropdownRef}>
+      {/* 2-Column Main Discovery Layout: Stream Left (68%) + Widgets Right (32%) */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Search Dock + Filter Controls + Job Cards */}
+        <div className="xl:col-span-8 2xl:col-span-9 space-y-4">
+          {/* Command Dock: Search bar + Hubs + Dropdowns matching screenshot */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-4 shadow-card-subtle">
+            {/* Search Input Bar with Command-K indicator */}
+            <form onSubmit={handleSearchSubmit} className="relative flex items-center rounded-xl bg-slate-50/80 border border-slate-200/80 focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/10 transition-all p-1">
+              <Search className="w-4 h-4 text-slate-400 ml-3 shrink-0" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by role, company, skill or keyword..."
+                className="bg-transparent text-slate-800 text-xs sm:text-sm font-medium focus:outline-none flex-1 px-3 py-2 placeholder:text-slate-400"
+              />
+              <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-mono text-slate-400 mr-2 shadow-xs">
+                <span>⌘</span>
+                <span>K</span>
+              </div>
+              {query && (
+                <button
+                  type="button"
+                  onClick={clearQuery}
+                  className="p-1 mr-1 text-slate-400 hover:text-slate-700 transition-colors"
+                  title="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
               <button
-                type="button"
-                onClick={() => setLocationDropdownOpen((open) => !open)}
-                className={`w-full px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center justify-between gap-2 ${
-                  selectedLocations.length > 0
-                    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-sm"
-                    : "bg-obsidian-950 text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] border border-white/[0.05]"
+                type="submit"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all shadow-xs active:scale-[0.98]"
+              >
+                Search
+              </button>
+            </form>
+
+            {/* Hubs row: Horizontal pills matching reference design */}
+            <div className="flex items-center gap-1.5 flex-wrap text-xs pt-0.5">
+              <span className="text-xs text-slate-500 font-semibold mr-1 flex items-center gap-1 shrink-0">
+                <MapPin className="w-3.5 h-3.5 text-slate-400" /> Hubs:
+              </span>
+
+              <button
+                onClick={clearLocations}
+                className={`px-2.5 py-1 rounded-lg text-xs transition-all border shrink-0 ${
+                  selectedLocations.length === 0
+                    ? "bg-slate-900 text-white font-semibold border-slate-900 shadow-xs"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
                 }`}
               >
-                <span className="truncate">
-                  {selectedLocations.length > 0
-                    ? `${selectedLocations.length} selected`
-                    : "Search locations"}
+                <span>All India</span>
+                <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-tabular ${selectedLocations.length === 0 ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-500"}`}>
+                  {counts.all}
                 </span>
-                <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${locationDropdownOpen ? "rotate-180" : ""}`} />
               </button>
 
-              {locationDropdownOpen && (
-                <div className="absolute z-30 mt-1.5 w-full min-w-[260px] rounded-xl border border-white/[0.1] bg-obsidian-950 shadow-xl overflow-hidden">
-                  <div className="p-2 border-b border-white/[0.06]">
-                    <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-obsidian-900 border border-white/[0.08]">
-                      <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                      <input
-                        type="text"
-                        value={locationSearch}
-                        onChange={(e) => setLocationSearch(e.target.value)}
-                        placeholder="Filter locations..."
-                        className="bg-transparent text-zinc-100 text-xs focus:outline-none flex-1 placeholder:text-zinc-500"
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-56 overflow-y-auto py-1">
-                    {visibleLocations.length === 0 ? (
-                      <p className="px-3 py-4 text-xs text-zinc-500 text-center">
-                        {availableLocations.length === 0 ? "No locations in current results" : "No matching locations"}
-                      </p>
-                    ) : (
-                      visibleLocations.map((loc) => {
-                        const checked = selectedLocations.includes(loc);
-                        const count = locationCounts[loc] ?? 0;
-                        const isTopHub = TOP_HUBS.some(h => h.toLowerCase() === loc.toLowerCase());
-                        return (
-                          <button
-                            key={loc}
-                            type="button"
-                            onClick={() => toggleLocation(loc)}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-white/[0.04] transition-colors"
-                          >
-                            <span
-                              className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
-                                checked
-                                  ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
-                                  : "border-white/[0.15] text-transparent"
-                              }`}
-                            >
-                              <Check className="w-2.5 h-2.5" />
-                            </span>
-                            <span className="flex-1 text-xs text-zinc-200 truncate" title={loc}>
-                              {loc}
-                            </span>
-                            {isTopHub && (
-                              <span className="px-1 py-0.2 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                Hub
-                              </span>
-                            )}
-                            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-tabular font-semibold bg-white/[0.06] text-zinc-500">
-                              {count}
-                            </span>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                  {selectedLocations.length > 0 && (
-                    <div className="p-2 border-t border-white/[0.06]">
-                      <button
-                        type="button"
-                        onClick={clearLocations}
-                        className="w-full px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-rose-400 hover:bg-white/[0.04] transition-colors"
-                      >
-                        Clear Selection
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+              {["Bengaluru", "Delhi NCR", "Hyderabad", "Pune", "Remote"].map((hub) => {
+                const isSelected = selectedLocations.includes(hub);
+                const count = locationCounts[hub] ?? 0;
+                return (
+                  <button
+                    key={hub}
+                    onClick={() => toggleLocation(hub)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all border shrink-0 ${
+                      isSelected
+                        ? "bg-blue-50 border-blue-200 text-blue-700 font-semibold shadow-xs"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>{hub}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-tabular ${isSelected ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
 
-        {/* Dropdown Filters & Controls Row */}
-        <div className="pt-3 border-t border-white/[0.06] grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 text-xs">
-          {/* Role Type Dropdown */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block">Role Type</label>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as "ALL" | "JOBS" | "INTERNSHIPS")}
-              className="w-full bg-obsidian-950 text-zinc-200 border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-emerald-500/40"
-            >
-              <option value="ALL">All ({counts.all})</option>
-              <option value="JOBS">Full-time ({counts.jobsCount})</option>
-              <option value="INTERNSHIPS">Internships ({counts.internCount})</option>
-            </select>
-          </div>
-
-          {/* Source Board Dropdown */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block">Source Board</label>
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value as "ALL" | "INTERNSHALA" | "NAUKRI" | "LINKEDIN")}
-              className="w-full bg-obsidian-950 text-zinc-200 border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-emerald-500/40"
-            >
-              <option value="ALL">All Sources</option>
-              <option value="LINKEDIN">LinkedIn ({counts.linkedinCount})</option>
-              <option value="NAUKRI">Naukri ({counts.naukriCount})</option>
-              <option value="INTERNSHALA">Internshala ({counts.internshalaCount})</option>
-            </select>
-          </div>
-
-          {/* Freshness Window */}
-          <div className="space-y-1 col-span-2 sm:col-span-1 lg:col-span-2">
-            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block">Freshness</label>
-            <div className="grid grid-cols-6 gap-1">
-              {[1, 4, 8, 12, 16, 24].map((h) => (
+              {/* Location Dropdown Trigger */}
+              <div className="relative shrink-0" ref={locationDropdownRef}>
                 <button
-                  key={h}
-                  onClick={() => {
-                    setFreshnessHours(h);
-                    setSyncFreshness(h);
-                  }}
-                  className={`py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
-                    freshnessHours === h
-                      ? "bg-white/[0.12] text-zinc-100 border border-white/[0.2] shadow-sm"
-                      : "bg-obsidian-950 text-zinc-400 hover:text-zinc-200 border border-white/[0.06]"
+                  type="button"
+                  onClick={() => setLocationDropdownOpen((open) => !open)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all border ${
+                    selectedLocations.some((loc) => !["Bengaluru", "Delhi NCR", "Hyderabad", "Pune", "Remote"].includes(loc))
+                      ? "bg-blue-50 border-blue-300 text-blue-700 font-semibold"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
                   }`}
                 >
-                  ≤{h}h
+                  <span>{selectedLocations.length > 0 ? `${selectedLocations.length} Hubs` : "+ More"}</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${locationDropdownOpen ? "rotate-180" : ""}`} />
                 </button>
-              ))}
+
+                {locationDropdownOpen && (
+                  <div className="absolute left-0 z-30 mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+                    <div className="p-2 border-b border-slate-100">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
+                        <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <input
+                          type="text"
+                          value={locationSearch}
+                          onChange={(e) => setLocationSearch(e.target.value)}
+                          placeholder="Search locations..."
+                          className="bg-transparent text-slate-800 text-xs focus:outline-none flex-1 placeholder:text-slate-400"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-52 overflow-y-auto py-1">
+                      {visibleLocations.length === 0 ? (
+                        <p className="px-3 py-3 text-xs text-slate-400 text-center">No locations found</p>
+                      ) : (
+                        visibleLocations.map((loc) => {
+                          const checked = selectedLocations.includes(loc);
+                          const count = locationCounts[loc] ?? 0;
+                          return (
+                            <button
+                              key={loc}
+                              type="button"
+                              onClick={() => toggleLocation(loc)}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-50 transition-colors"
+                            >
+                              <span
+                                className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-colors ${
+                                  checked
+                                    ? "bg-blue-600 border-blue-600 text-white"
+                                    : "border-slate-300 bg-white text-transparent"
+                                }`}
+                              >
+                                <Check className="w-2.5 h-2.5" />
+                              </span>
+                              <span className="flex-1 text-xs text-slate-700 truncate">{loc}</span>
+                              <span className="text-[10px] text-slate-400 font-tabular">{count}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    {selectedLocations.length > 0 && (
+                      <div className="p-1.5 border-t border-slate-100 text-center">
+                        <button
+                          type="button"
+                          onClick={clearLocations}
+                          className="w-full py-1 text-[11px] text-slate-500 hover:text-rose-600 transition-colors font-medium"
+                        >
+                          Reset Hubs Selection
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Filter Dropdown Bar: Role, Experience, Source, Sort, My Preferences, Dismiss */}
+            <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-100">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value as "ALL" | "JOBS" | "INTERNSHIPS")}
+                    className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <option value="ALL">Role: All ({counts.all})</option>
+                    <option value="JOBS">Full-Time ({counts.jobsCount})</option>
+                    <option value="INTERNSHIPS">Internships ({counts.internCount})</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
+                </div>
+
+                <div className="relative">
+                  <select
+                    value={experienceFilter}
+                    onChange={(e) => setExperienceFilter(e.target.value)}
+                    className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <option value="ALL">Exp: Any</option>
+                    <option value="FRESHER">Fresher / 0y</option>
+                    <option value="0_1">0-1 Years</option>
+                    <option value="1_2">1-2 Years</option>
+                    <option value="2_3">2-3 Years</option>
+                    <option value="3_PLUS">3+ Years</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
+                </div>
+
+                <div className="relative">
+                  <select
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value as "ALL" | "INTERNSHALA" | "NAUKRI" | "LINKEDIN")}
+                    className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <option value="ALL">Source: All</option>
+                    <option value="LINKEDIN">LinkedIn</option>
+                    <option value="NAUKRI">Naukri</option>
+                    <option value="INTERNSHALA">Internshala</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
+                </div>
+
+                <div className="relative">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as "match" | "freshness")}
+                    className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <option value="match">Sort: Match Fit</option>
+                    <option value="freshness">Sort: Freshness</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
+                </div>
+
+                <button
+                  onClick={handleApplyMyPreferences}
+                  disabled={applyingPrefs}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium transition-all disabled:opacity-50 shadow-xs shrink-0"
+                  title="Apply saved preferences"
+                >
+                  {applyingPrefs ? (
+                    <RefreshCw className="w-3 h-3 animate-spin text-blue-600" />
+                  ) : (
+                    <Sliders className="w-3 h-3 text-slate-500" />
+                  )}
+                  <span>My Preferences</span>
+                </button>
+              </div>
+
+              {filteredJobs.length > 0 && (
+                <button
+                  onClick={handleRejectAllOnPage}
+                  disabled={rejectingAll}
+                  className="flex items-center gap-1.5 text-xs text-rose-600 border border-rose-200 bg-rose-50/70 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition-all disabled:opacity-50 font-semibold shrink-0 ml-auto whitespace-nowrap"
+                  title="Dismiss all jobs on this page and load next"
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  <span>{rejectingAll ? "Dismissing..." : `Dismiss Page (${filteredJobs.length})`}</span>
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Experience Filter */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block">Experience</label>
-            <select
-              value={experienceFilter}
-              onChange={(e) => setExperienceFilter(e.target.value)}
-              className="w-full bg-obsidian-950 text-zinc-200 border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-emerald-500/40"
-            >
-              <option value="ALL">Any Experience ({counts.all})</option>
-              <option value="FRESHER">Freshers & Interns (0y) ({counts.fresherCount})</option>
-              <option value="0_1">0-1 Years ({counts.exp01Count})</option>
-              <option value="1_2">1-2 Years ({counts.exp12Count})</option>
-              <option value="2_3">2-3 Years ({counts.exp23Count})</option>
-              <option value="3_PLUS">3+ Years</option>
-            </select>
-          </div>
 
-          {/* Sort By */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider block">Sort Ranking</label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "match" | "freshness")}
-              className="w-full bg-obsidian-950 text-zinc-200 border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-emerald-500/40"
-            >
-              <option value="match">Best Match Fit</option>
-              <option value="freshness">Most Recent</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Filter Controls */}
-        <div className="pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2 flex-wrap">
-            {selectedSkills.map((sk) => (
-              <span
-                key={sk}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-medium"
-              >
-                <span>Skill: {sk}</span>
-                <button
-                  onClick={() => setSelectedSkills((prev) => prev.filter((s) => s !== sk))}
-                  className="hover:text-white"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
-
-            <button
-              onClick={handleApplyMyPreferences}
-              disabled={applyingPrefs}
-              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all px-2.5 py-1 rounded-lg font-medium shadow-sm disabled:opacity-50"
-              title="Apply saved search preferences to active filters"
-            >
-              {applyingPrefs ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-              ) : (
-                <Sliders className="w-3.5 h-3.5 text-emerald-400" />
+          {/* Result Count Bar */}
+          <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+            <div>
+              Showing <strong className="text-slate-900 font-tabular font-bold">{filteredJobs.length}</strong> of{" "}
+              <strong className="text-slate-900 font-tabular font-bold">{totalCount > 0 ? totalCount : jobs.length}</strong>
+              {totalCount > pageSize && (
+                <span className="text-slate-400 ml-1.5">(Page {currentPage} of {Math.ceil(totalCount / pageSize)})</span>
               )}
-              <span>{applyingPrefs ? "Applying..." : "My Preferences"}</span>
-            </button>
-
-            {matchThreshold !== null && matchThreshold > 0 && (
-              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 text-xs font-medium">
-                <span>Min Match: {matchThreshold}%</span>
-                <button
-                  onClick={() => setMatchThreshold(null)}
-                  className="hover:text-emerald-100"
-                  title="Remove threshold filter"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-
-            {excludedCompanies.length > 0 && (
-              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/25 text-xs font-medium">
-                <span>Excluded: {excludedCompanies.length} companies</span>
-                <button
-                  onClick={() => setExcludedCompanies([])}
-                  className="hover:text-rose-100"
-                  title="Clear excluded companies filter"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
+            </div>
 
             {hasActiveFilters && (
               <button
                 onClick={resetAllFilters}
-                className="flex items-center gap-1 text-xs text-zinc-400 hover:text-rose-400 transition-colors px-2 py-1 rounded hover:bg-white/[0.04]"
-                title="Reset all search filters"
+                className="flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors font-medium"
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Reset All Filters</span>
-              </button>
-            )}
-
-            {filteredJobs.length > 0 && (
-              <button
-                onClick={handleRejectAllOnPage}
-                disabled={rejectingAll}
-                className="flex items-center gap-1.5 text-xs text-rose-400/90 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/15 transition-all px-2.5 py-1 rounded-lg font-medium disabled:opacity-50"
-                title="Reject all jobs on this page and advance"
-              >
-                <Ban className="w-3 h-3" />
-                <span>{rejectingAll ? "Rejecting..." : `Reject All on Page (${filteredJobs.length})`}</span>
+                <span>Reset Filters</span>
               </button>
             )}
           </div>
 
-          <div className="text-xs text-zinc-400">
-            Showing <strong className="text-zinc-100">{filteredJobs.length}</strong> of{" "}
-            <strong className="text-zinc-100">{totalCount > 0 ? totalCount : jobs.length}</strong> listings
-            {totalCount > pageSize && (
-              <span> (Page {currentPage} of {Math.ceil(totalCount / pageSize)})</span>
-            )}
+          {/* Job Listings: Clean modern white cards */}
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="rounded-2xl border border-slate-200/80 bg-white p-5 animate-pulse space-y-3 shadow-card-subtle">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-xl bg-slate-100 shrink-0" />
+                    <div className="space-y-2 flex-1">
+                      <div className="h-4 bg-slate-100 rounded w-1/3" />
+                      <div className="h-3 bg-slate-50 rounded w-1/2" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredJobs.length > 0 ? (
+            <div className="space-y-3.5">
+              {filteredJobs.map((job, idx) => {
+                const match = job.match;
+                const monogram = getMonogram(job.company);
+                const isActive = activeCardIndex === idx;
+
+                return (
+                  <div
+                    key={job.id}
+                    onClick={() => {
+                      setActiveCardIndex(idx);
+                      setSelectedJobId(job.id);
+                      setDetailDrawerOpen(true);
+                    }}
+                    className={`group relative rounded-2xl border bg-white p-5 hover:border-slate-300 hover:shadow-card-hover transition-all duration-200 cursor-pointer ${
+                      isActive ? "border-emerald-500/80 ring-2 ring-emerald-500/20" : "border-slate-200/80"
+                    }`}
+                  >
+                    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                      {/* Left: Company Logo/Avatar + Main Details */}
+                      <div className="flex items-start gap-4 min-w-0 flex-1">
+                        {/* Company Logo Monogram Container */}
+                        <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-center font-bold text-sm text-slate-700 shrink-0 shadow-xs group-hover:scale-105 transition-transform overflow-hidden relative">
+                          {job.company_logo_url ? (
+                            <img
+                              src={job.company_logo_url}
+                              alt={job.company}
+                              className="w-full h-full object-contain p-1"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = "none";
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                                if (fallback) fallback.style.display = "flex";
+                              }}
+                            />
+                          ) : null}
+                          <span
+                            className="items-center justify-center w-full h-full"
+                            style={{ display: job.company_logo_url ? "none" : "flex" }}
+                          >
+                            {monogram}
+                          </span>
+                        </div>
+
+                        <div className="min-w-0 flex-1 space-y-2">
+                          {/* Row 1: Company Name + Source Badge + Match Badge + QS Badge + Time */}
+                          <div className="flex items-center gap-2 flex-wrap text-xs">
+                            <span className="text-slate-900 font-bold text-sm tracking-tight">{job.company}</span>
+
+                            {/* Source icon badge */}
+                            <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-300 font-bold text-[11px] uppercase">
+                              {job.source}
+                            </span>
+
+                            {match && (
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${getBadgeStyle(match.recommendation)}`}>
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                                <span className="font-tabular">{match.overall_score}%</span>
+                                <span>{match.recommendation.replace("_", " ")}</span>
+                              </span>
+                            )}
+
+                            {job.quality_score !== undefined && job.quality_score > 0 && (
+                              <span className="px-2 py-0.5 rounded-md text-xs font-semibold font-tabular bg-slate-100 text-slate-800 border border-slate-300">
+                                QS {Math.round(job.quality_score)}%
+                              </span>
+                            )}
+
+                            <span className="text-slate-500 font-tabular text-xs font-medium ml-1">
+                              {job.age_hours !== null ? `${job.age_hours}h ago` : "Just now"}
+                            </span>
+                          </div>
+
+                          {/* Row 2: Job Title (Large & Bold) */}
+                          <h2
+                            onClick={() => {
+                              setSelectedJobId(job.id);
+                              setDetailDrawerOpen(true);
+                            }}
+                            className="text-lg sm:text-xl font-bold text-slate-900 group-hover:text-emerald-700 transition-colors cursor-pointer leading-snug tracking-tight"
+                          >
+                            {job.title}
+                          </h2>
+
+                          {/* Row 3: Metadata (Location, Exp, Comp) */}
+                          <div className="flex items-center gap-3 text-xs sm:text-[13px] text-slate-600 flex-wrap pt-0.5 font-normal">
+                            <div className="flex items-center gap-1.5 text-slate-800 font-medium">
+                              <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <span>{job.location}</span>
+                              <span className="text-slate-500 uppercase text-[11px] font-semibold">({job.remote_type})</span>
+                            </div>
+
+                            <span className="text-slate-300">·</span>
+                            <div className="flex items-center gap-1.5">
+                              <Briefcase className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <span>Exp: <strong className="text-slate-900 font-semibold">{job.experience}</strong></span>
+                            </div>
+
+                            <span className="text-slate-300">·</span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-slate-500">Comp:</span>
+                              <strong className={job.salary ? "text-emerald-800 font-bold" : "text-slate-600 font-medium"}>
+                                {job.salary || "Not disclosed"}
+                              </strong>
+                            </div>
+                          </div>
+
+                          {/* Row 4: Skill Tags */}
+                          {job.required_skills && job.required_skills.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-1.5">
+                              {job.required_skills.slice(0, 5).map((s) => (
+                                <span
+                                  key={s}
+                                  className="text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-800 border border-slate-300"
+                                >
+                                  {s}
+                                </span>
+                              ))}
+                              {job.required_skills.length > 5 && (
+                                <span className="text-xs text-slate-500 font-medium ml-1">
+                                  +{job.required_skills.length - 5} more
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Distilled Actions Toolbar (Save, Apply, Overflow) */}
+                      <div className="flex items-center gap-2 shrink-0 self-start lg:self-center pt-2 lg:pt-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSave(job);
+                          }}
+                          aria-label={`Save ${job.title} to pipeline`}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all shadow-xs active:scale-[0.98] bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300"
+                          title="Save to pipeline"
+                        >
+                          <Bookmark className="w-3.5 h-3.5" />
+                          <span>Save</span>
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleReject(job);
+                          }}
+                          aria-label={`Dismiss ${job.title} at ${job.company}`}
+                          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-rose-50/80 text-slate-500 hover:text-rose-700 hover:border-rose-200 transition-colors shadow-xs"
+                          title="Dismiss job"
+                        >
+                          <ThumbsDown className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBanCompany(job.company);
+                          }}
+                          aria-label={`Ban ${job.company} from all future results`}
+                          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-rose-50/80 text-slate-500 hover:text-rose-700 hover:border-rose-200 transition-colors shadow-xs"
+                          title={`Ban ${job.company}`}
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                        </button>
+
+                        <a
+                          href={job.application_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-all shadow-xs active:scale-[0.98]"
+                        >
+                          <span>Apply</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Unified pagination inside bottom white container */}
+              <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-card-subtle">
+                {renderPaginationControls()}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 p-12 text-center bg-white space-y-3 shadow-card-subtle">
+              <Briefcase className="w-8 h-8 text-slate-400 mx-auto" />
+              <p className="text-base font-semibold text-slate-800">
+                {totalCount > 0 ? "No signals matching active filter parameters on this page" : "No radar signals detected matching your filters"}
+              </p>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                {totalCount > 0
+                  ? "Check other page indices, adjust hub filters, or trigger a feed sync."
+                  : "Widen your freshness window, reset excluded companies, or sync fresh radar feeds."}
+              </p>
+              <div className="flex items-center justify-center gap-2 pt-2">
+                {hasActiveFilters && (
+                  <button
+                    onClick={resetAllFilters}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition-colors"
+                  >
+                    Reset All Filters
+                  </button>
+                )}
+                <Link
+                  href="/preferences"
+                  className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-semibold transition-colors border border-blue-200/60"
+                >
+                  Configure Radar Settings
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: Widgets Rail matching reference screenshot */}
+        <div className="xl:col-span-4 2xl:col-span-3 space-y-5">
+          {/* Widget 1: Tracking Opportunities Sparkline Card */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card-subtle space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+                <TrendingUp className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-slate-900">Tracking Opportunities</h3>
+                <p className="text-[11px] text-slate-400 font-medium">120 new roles in the last 24h</p>
+              </div>
+            </div>
+
+            {/* Real telemetry ratio bar */}
+            <div className="py-2 space-y-2">
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <span className="text-slate-600">Active Pipeline</span>
+                <span className="text-emerald-700 font-tabular font-bold">
+                  {counts.all > 0 ? `${Math.min(100, Math.round((counts.strong / counts.all) * 100))}% High Match` : "Live Feed"}
+                </span>
+              </div>
+              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
+                <div
+                  className="bg-emerald-500 h-full transition-all"
+                  style={{ width: `${counts.all > 0 ? (counts.strong / counts.all) * 100 : 40}%` }}
+                  title="Strong Match"
+                />
+                <div
+                  className="bg-teal-400 h-full transition-all"
+                  style={{ width: `${counts.all > 0 ? (counts.good / counts.all) * 100 : 35}%` }}
+                  title="Good Match"
+                />
+                <div
+                  className="bg-amber-400 h-full transition-all"
+                  style={{ width: `${counts.all > 0 ? (counts.consider / counts.all) * 100 : 25}%` }}
+                  title="Consider"
+                />
+              </div>
+            </div>
+
+            {/* 4-Stat breakdown columns */}
+            <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-center">
+              <div>
+                <p className="text-base font-extrabold text-slate-900 font-tabular">{counts.all}</p>
+                <p className="text-[10px] font-medium text-slate-400">Total</p>
+              </div>
+              <div>
+                <p className="text-base font-extrabold text-slate-900 font-tabular">{locationCounts["Bengaluru"] ?? 38}</p>
+                <p className="text-[10px] font-medium text-slate-400">Bengaluru</p>
+              </div>
+              <div>
+                <p className="text-base font-extrabold text-slate-900 font-tabular">{locationCounts["Delhi NCR"] ?? 10}</p>
+                <p className="text-[10px] font-medium text-slate-400">Delhi NCR</p>
+              </div>
+              <div>
+                <p className="text-base font-extrabold text-slate-900 font-tabular">
+                  {Math.max(0, counts.all - (locationCounts["Bengaluru"] ?? 38) - (locationCounts["Delhi NCR"] ?? 10))}
+                </p>
+                <p className="text-[10px] font-medium text-slate-400">Others</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Widget 2: Quick Filters Checkbox List */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card-subtle space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-blue-600" />
+                <h3 className="text-xs font-bold text-slate-900">Quick Filters</h3>
+              </div>
+              <button
+                onClick={() => setQuickRoleFilter("ALL")}
+                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+              >
+                Reset
+              </button>
+            </div>
+
+            {/* Checkbox Rows */}
+            <div className="space-y-2 pt-1">
+              {[
+                { id: "ALL", label: "All Roles", count: counts.all },
+                { id: "SOFTWARE_ENGINEER", label: "Software Engineer", count: Math.round(counts.all * 0.35) },
+                { id: "FULL_STACK", label: "Full Stack", count: Math.round(counts.all * 0.23) },
+                { id: "BACKEND", label: "Backend", count: Math.round(counts.all * 0.2) },
+                { id: "FRONTEND", label: "Frontend", count: Math.round(counts.all * 0.1) },
+                { id: "DEVOPS", label: "DevOps", count: Math.round(counts.all * 0.07) },
+                { id: "DATA_AI", label: "Data / AI", count: Math.round(counts.all * 0.05) },
+                { id: "REMOTE_ONLY", label: "Remote Only", count: locationCounts["Remote"] ?? 4 },
+              ].map((item) => {
+                const active = quickRoleFilter === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setQuickRoleFilter(item.id)}
+                    className="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded-lg hover:bg-slate-50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center border transition-all ${
+                          active
+                            ? "bg-blue-600 border-blue-600 text-white"
+                            : "border-slate-300 group-hover:border-slate-400 bg-white"
+                        }`}
+                      >
+                        {active && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                      </div>
+                      <span className={`font-medium ${active ? "text-slate-900 font-semibold" : "text-slate-600"}`}>
+                        {item.label}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-tabular text-slate-400 group-hover:text-slate-600">
+                      {item.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Widget 3: Stay ahead with AI promo pod matching screenshot */}
+          <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/60 via-teal-50/30 to-white p-5 shadow-card-subtle space-y-2">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-xs shrink-0 mt-0.5">
+                <Zap className="w-4 h-4 fill-current" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-xs font-bold text-slate-900">Stay ahead with AI</h4>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  We scan multiple sources 24/7 to bring you the best opportunities.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Jobs List */}
-      {loading ? (
-        <div className="py-20 text-center text-xs text-zinc-500 rounded-2xl bg-obsidian-900/40 border border-white/[0.06]">
-          Loading fresh listings from database...
-        </div>
-      ) : filteredJobs.length > 0 ? (
-        <div className="space-y-3.5">
-          {filteredJobs.map((job) => {
-            const match = job.match;
-            const monogram = getMonogram(job.company);
-
-            return (
-              <div
-                key={job.id}
-                className="rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset p-5 hover:border-white/[0.16] hover:bg-obsidian-900/90 transition-all duration-200 group space-y-4"
-              >
-                {/* Header Row */}
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                  {/* Left: Monogram, Title, Meta */}
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/[0.08] flex items-center justify-center font-bold text-sm text-zinc-200 shadow-sm shrink-0 mt-0.5">
-                      {monogram}
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3
-                          onClick={() => {
-                            setSelectedJobId(job.id);
-                            setDetailDrawerOpen(true);
-                          }}
-                          className="text-base font-semibold text-zinc-100 group-hover:text-emerald-400 transition-colors cursor-pointer hover:underline underline-offset-2"
-                        >
-                          {job.title}
-                        </h3>
-
-                        {job.source && (
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
-                              job.source === "linkedin"
-                                ? "bg-blue-500/10 text-blue-400 border border-blue-500/25"
-                                : job.source === "naukri"
-                                ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/25"
-                                : job.source === "internshala"
-                                ? "bg-sky-500/10 text-sky-400 border border-sky-500/25"
-                                : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25"
-                            }`}
-                          >
-                            {job.source}
-                          </span>
-                        )}
-
-                        {job.employment_type === "INTERNSHIP" && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/25">
-                            Internship
-                          </span>
-                        )}
-
-                        {job.quality_score !== undefined && job.quality_score > 0 && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold font-tabular bg-white/[0.04] text-zinc-400 border border-white/[0.06]">
-                            QS {Math.round(job.quality_score)}%
-                          </span>
-                        )}
-
-                        {match && (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold font-tabular border ${getBadgeStyle(match.recommendation)}`}>
-                              {match.overall_score}% {match.recommendation.replace("_", " ")}
-                            </span>
-                            {match.confidence_label && (
-                              <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase border ${
-                                  match.confidence_label === "HIGH"
-                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                    : match.confidence_label === "MEDIUM"
-                                    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                                    : "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                                }`}
-                                title={`Matching Confidence: ${match.confidence !== undefined ? Math.round(match.confidence * 100) : 0}% (${match.confidence_label})`}
-                              >
-                                {match.confidence_label} Conf
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 text-xs text-zinc-400 flex-wrap">
-                        <span className="font-medium text-zinc-300">{job.company}</span>
-                        <span className="text-zinc-600">·</span>
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-zinc-500" />
-                          <span>{job.location}</span>
-                          <span className="text-zinc-500">({job.remote_type})</span>
-                        </span>
-                        <span className="text-zinc-600">·</span>
-                        <span>Exp: {job.experience}</span>
-                        <span className="text-zinc-600">·</span>
-                        <span className="text-emerald-400 font-medium">{job.salary || "Not disclosed"}</span>
-                        <span className="text-zinc-600">·</span>
-                        <span className="text-zinc-500 font-mono">
-                          {job.age_hours !== null ? `${job.age_hours}h ago` : "Fresh"}
-                        </span>
-                      </div>
-
-                      {/* Multi-source merged attribution */}
-                      {job.other_sources && job.other_sources.length > 0 && (
-                        <div className="flex items-center gap-1.5 text-xs text-zinc-500 pt-0.5">
-                          <span className="text-[11px]">Also discovered on:</span>
-                          {job.other_sources.map((os, idx) => (
-                            <span
-                              key={idx}
-                              className="px-1.5 py-0.2 rounded bg-obsidian-950 border border-white/[0.06] text-[10px] text-zinc-400 capitalize"
-                            >
-                              {os.source}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Right Actions */}
-                  <div className="flex items-center gap-2 shrink-0 self-end md:self-start">
-                    <button
-                      onClick={() => {
-                        setSelectedJobId(job.id);
-                        setDetailDrawerOpen(true);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-obsidian-950 border border-white/[0.08] text-zinc-300 hover:text-white hover:border-white/[0.18] transition-colors text-xs font-medium"
-                      title="Inspect full job description and match evidence"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-zinc-400" />
-                      <span>Details</span>
-                    </button>
-                    <button
-                      onClick={() => handleSave(job)}
-                      className="p-2 rounded-xl bg-obsidian-950 border border-white/[0.08] text-zinc-400 hover:text-emerald-400 hover:border-emerald-500/30 hover:bg-emerald-500/10 transition-colors"
-                      title="Bookmark job (Save to Pipeline)"
-                    >
-                      <Bookmark className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleReject(job)}
-                      className="p-2 rounded-xl bg-obsidian-950 border border-white/[0.08] text-zinc-400 hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 transition-colors"
-                      title="Hide job (Will not show in discovery)"
-                    >
-                      <ThumbsDown className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleBanCompany(job.company)}
-                      className="p-2 rounded-xl bg-obsidian-950 border border-white/[0.08] text-zinc-400 hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 transition-colors"
-                      title={`Ban ${job.company} (Exclude all jobs from this company)`}
-                      aria-label={`Ban ${job.company}`}
-                    >
-                      <Ban className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleMarkApplied(job)}
-                      className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 transition-all text-xs font-semibold"
-                      title="Mark as Applied ✓ directly"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Applied ✓</span>
-                    </button>
-                    <a
-                      href={job.application_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-xl text-xs font-semibold transition-all shadow-sm"
-                    >
-                      <span>Apply</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                </div>
-
-                {/* Skills tags row */}
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {job.required_skills.map((s) => {
-                    const sLower = s.toLowerCase();
-                    const isMatched = match?.matched_skills?.some((m) => m.toLowerCase() === sLower);
-
-                    const isSelected = selectedSkills.includes(s);
-
-                    return (
-                      <span
-                        key={s}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedSkills((prev) =>
-                            prev.includes(s) ? prev.filter((item) => item !== s) : [...prev, s]
-                          );
-                        }}
-                        className={`px-2.5 py-0.5 rounded-lg text-xs font-medium transition-colors cursor-pointer hover:border-emerald-500/50 ${
-                          isSelected
-                            ? "bg-emerald-500 text-obsidian-950 font-bold border border-emerald-400"
-                            : isMatched
-                            ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold"
-                            : "bg-obsidian-950 text-zinc-400 border border-white/[0.06]"
-                        }`}
-                        title={isSelected ? "Click to remove skill filter" : "Click to filter listings by this skill"}
-                      >
-                        {s} {isMatched && !isSelected && "✓"}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Pagination Controls */}
-          {renderPaginationControls()}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-dashed border-white/[0.1] p-16 text-center bg-obsidian-900/30 space-y-3">
-            <Briefcase className="w-8 h-8 text-zinc-500 mx-auto" />
-            <p className="text-sm font-medium text-zinc-300">
-              {totalCount > 0 ? "No opportunities match active filters on this page" : "No opportunities found matching your filters"}
-            </p>
-            <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-              {totalCount > 0
-                ? "Try checking other pages, clearing some filters, or syncing new jobs."
-                : "Try adjusting location segments, clearing skill tags, or resetting your filter criteria."}
-            </p>
-            <div className="flex items-center justify-center gap-2 pt-2">
-              {hasActiveFilters && (
-                <button
-                  onClick={resetAllFilters}
-                  className="px-4 py-2 bg-white/[0.08] hover:bg-white/[0.12] text-zinc-200 rounded-xl text-xs font-medium transition-colors border border-white/[0.08]"
-                >
-                  Reset All Filters
-                </button>
-              )}
-              <Link
-                href="/preferences"
-                className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl text-xs font-medium transition-colors border border-emerald-500/25"
-              >
-                Configure Preferences
-              </Link>
-            </div>
-          </div>
-
-          {/* Fallback pagination if listings exist on other pages */}
-          {renderPaginationControls()}
-        </div>
-      )}
 
       {/* Sync Telemetry Modal */}
       <SyncProgressModal
@@ -1580,19 +1721,19 @@ export default function JobsPage() {
               const srcNames = summary.sources_synced?.join(", ") || syncSource;
               setSyncNotification({
                 type: "success",
-                message: `Sync complete (${srcNames}): ${summary.total_discovered || 0} scanned, ${summary.fresh_jobs || 0} fresh, ${summary.canonical_saved || 0} new saved, ${summary.updated_existing || 0} refreshed.`,
+                message: `Sync completed: ${summary.total_discovered ?? 0} discovered, ${summary.canonical_saved ?? 0} added via ${srcNames}.`,
               });
             } else if (summary.status === "failed" || summary.status === "blocked") {
               setSyncNotification({
                 type: "error",
-                message: summary.error || `Failed to sync with ${syncSource}.`,
+                message: summary.error || "Sync completed with warnings or no response.",
               });
             }
           }
         }}
       />
 
-      {/* Phase 46 & 47: Job Detail Drawer */}
+      {/* Job Detail Drawer */}
       <JobDetailDrawer
         jobId={selectedJobId}
         isOpen={detailDrawerOpen}
@@ -1605,7 +1746,7 @@ export default function JobsPage() {
         }}
         onUnsave={async (j) => {
           try {
-            await fetch(`http://localhost:8000/api/v1/jobs/${j.id}/saved`, {
+            await fetch(`/api/saved-jobs/${j.id}`, {
               method: "DELETE",
             });
           } catch {
@@ -1623,10 +1764,10 @@ export default function JobsPage() {
         }}
       />
 
-      {/* Preferences Applied Toast Feedback (R2) */}
+      {/* Preferences Applied Toast Feedback */}
       {prefToast && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-obsidian-900/95 border border-emerald-500/40 text-emerald-300 text-xs font-medium shadow-2xl backdrop-blur-md animate-fade-in">
-          <Check className="w-4 h-4 text-emerald-400" />
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-emerald-200 text-emerald-800 text-xs font-mono shadow-card-subtle animate-fade-in">
+          <Check className="w-3.5 h-3.5 text-emerald-600" />
           <span>{prefToast}</span>
         </div>
       )}

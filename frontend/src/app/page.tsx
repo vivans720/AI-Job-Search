@@ -12,16 +12,16 @@ export default function Home() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-obsidian-950 flex flex-col items-center justify-center p-6 text-zinc-300">
+    <div className="min-h-screen bg-[#f8f9fc] flex flex-col items-center justify-center p-6 text-slate-600">
       <div className="flex flex-col items-center gap-4 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 animate-pulse">
+        <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 animate-pulse shadow-xs">
           <Sparkles className="w-6 h-6" />
         </div>
         <div>
-          <h1 className="text-base font-semibold text-zinc-100">AI Job Agent</h1>
-          <p className="text-xs text-zinc-500 mt-1">Initializing environment...</p>
+          <h1 className="text-base font-bold text-slate-900">AI Job Agent</h1>
+          <p className="text-xs text-slate-500 mt-1">Initializing environment...</p>
         </div>
-        <Loader2 className="w-4 h-4 animate-spin text-emerald-400 mt-2" />
+        <Loader2 className="w-4 h-4 animate-spin text-emerald-600 mt-2" />
       </div>
     </div>
   );

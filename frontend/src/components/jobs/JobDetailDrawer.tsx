@@ -47,6 +47,7 @@ export interface JobDetailData {
   id: string;
   title: string;
   company: string;
+  company_logo_url?: string | null;
   location: string;
   remote_type: string;
   employment_type?: string;
@@ -129,26 +130,26 @@ export default function JobDetailDrawer({
   const isSaved = job?.saved_status === "SAVED";
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs animate-fade-in">
       <div
-        className="w-full max-w-2xl bg-obsidian-950 border-l border-white/[0.08] shadow-2xl flex flex-col h-full overflow-hidden"
+        className="w-full max-w-2xl bg-white border-l border-slate-200 shadow-2xl flex flex-col h-full overflow-hidden"
         role="dialog"
         aria-modal="true"
       >
         {/* Top Header */}
-        <div className="p-6 border-b border-white/[0.08] flex items-start justify-between gap-4 bg-obsidian-900/60">
-          <div className="space-y-2 flex-1 min-w-0">
+        <div className="p-6 border-b border-slate-200 flex items-start justify-between gap-4 bg-slate-50/80">
+          <div className="space-y-2.5 flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {job?.source && (
                 <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                  className={`px-2.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
                     job.source === "linkedin"
-                      ? "bg-blue-500/10 text-blue-400 border border-blue-500/25"
+                      ? "bg-blue-50 text-blue-800 border border-blue-300"
                       : job.source === "naukri"
-                      ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/25"
+                      ? "bg-indigo-50 text-indigo-800 border border-indigo-300"
                       : job.source === "internshala"
-                      ? "bg-sky-500/10 text-sky-400 border border-sky-500/25"
-                      : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25"
+                      ? "bg-sky-50 text-sky-800 border border-sky-300"
+                      : "bg-emerald-50 text-emerald-800 border border-emerald-300"
                   }`}
                 >
                   {job.source}
@@ -156,21 +157,21 @@ export default function JobDetailDrawer({
               )}
 
               {job?.employment_type && (
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                <span className="px-2.5 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-800 border border-purple-300">
                   {job.employment_type}
                 </span>
               )}
 
               {match && (
                 <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-semibold font-tabular border ${
+                  className={`px-3 py-0.5 rounded-full text-xs font-bold font-tabular border ${
                     match.overall_score >= 80
-                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-300"
                       : match.overall_score >= 60
-                      ? "bg-blue-500/15 text-blue-300 border-blue-500/30"
+                      ? "bg-blue-50 text-blue-800 border-blue-300"
                       : match.overall_score >= 40
-                      ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
-                      : "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                      ? "bg-amber-50 text-amber-900 border-amber-300"
+                      : "bg-rose-50 text-rose-800 border-rose-300"
                   }`}
                 >
                   {Math.round(match.overall_score)}% Match
@@ -178,21 +179,32 @@ export default function JobDetailDrawer({
               )}
             </div>
 
-            <h2 className="text-xl font-bold text-zinc-100 truncate">
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-snug">
               {job?.title || "Job Details"}
             </h2>
 
-            <div className="flex items-center gap-3 text-xs text-zinc-400 flex-wrap">
-              <span className="flex items-center gap-1 font-medium text-zinc-300">
-                <Building2 className="w-3.5 h-3.5 text-zinc-500" />
+            <div className="flex items-center gap-3 text-sm text-slate-600 flex-wrap">
+              <span className="flex items-center gap-1.5 font-semibold text-slate-900">
+                {job?.company_logo_url ? (
+                  <img
+                    src={job.company_logo_url}
+                    alt={job.company}
+                    className="w-4 h-4 object-contain rounded-xs shrink-0"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <Building2 className="w-4 h-4 text-slate-500" />
+                )}
                 <span>{job?.company}</span>
               </span>
-              <span className="text-zinc-600">·</span>
-              <span className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-zinc-500" />
+              <span className="text-slate-300">·</span>
+              <span className="flex items-center gap-1 text-slate-600 font-medium">
+                <MapPin className="w-4 h-4 text-slate-500" />
                 <span>{job?.location}</span>
                 {job?.remote_type && (
-                  <span className="text-zinc-500">({job.remote_type})</span>
+                  <span className="text-slate-500 font-semibold">({job.remote_type})</span>
                 )}
               </span>
             </div>
@@ -200,7 +212,7 @@ export default function JobDetailDrawer({
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors shrink-0"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
             title="Close drawer (Esc)"
           >
             <X className="w-5 h-5" />
@@ -209,7 +221,7 @@ export default function JobDetailDrawer({
 
         {/* Action Controls Bar */}
         {job && (
-          <div className="px-6 py-3 border-b border-white/[0.06] bg-obsidian-900/30 flex items-center justify-between gap-3">
+          <div className="px-6 py-3 border-b border-slate-200 bg-white flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
@@ -221,12 +233,12 @@ export default function JobDetailDrawer({
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
                   isSaved
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-rose-500/10 hover:text-rose-300 hover:border-rose-500/30"
-                    : "bg-obsidian-900 text-zinc-300 border-white/[0.08] hover:text-emerald-300 hover:border-emerald-500/30"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200"
+                    : "bg-white text-slate-700 border-slate-200 hover:text-emerald-700 hover:border-emerald-200 shadow-xs"
                 }`}
                 title={isSaved ? "Click to unsave" : "Save job"}
               >
-                {isSaved ? <BookmarkCheck className="w-4 h-4 text-emerald-400" /> : <Bookmark className="w-4 h-4" />}
+                {isSaved ? <BookmarkCheck className="w-4 h-4 text-emerald-600" /> : <Bookmark className="w-4 h-4" />}
                 <span>{isSaved ? "Saved" : "Save Job"}</span>
               </button>
 
@@ -235,7 +247,7 @@ export default function JobDetailDrawer({
                   if (onMarkApplied) onMarkApplied(job);
                   onClose();
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-xs font-semibold transition-all"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 text-xs font-semibold transition-all shadow-xs"
                 title="Mark as applied ✓ in tracking"
               >
                 <Check className="w-3.5 h-3.5" />
@@ -247,7 +259,8 @@ export default function JobDetailDrawer({
                   if (onReject) onReject(job);
                   onClose();
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/[0.08] bg-obsidian-900 text-zinc-400 hover:text-rose-400 hover:border-rose-500/30 text-xs font-semibold transition-all"
+                aria-label={`Hide ${job.title} from discovery`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-rose-700 hover:border-rose-200 text-xs font-semibold transition-all shadow-xs"
                 title="Hide job from discovery"
               >
                 <ThumbsDown className="w-3.5 h-3.5" />
@@ -261,9 +274,9 @@ export default function JobDetailDrawer({
                     onClose();
                   }
                 }}
-                className="p-1.5 rounded-xl border border-white/[0.08] bg-obsidian-900 text-zinc-400 hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 text-xs font-semibold transition-all"
+                aria-label={`Ban ${job.company} and exclude all listings`}
+                className="p-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:text-rose-600 hover:border-rose-200 hover:bg-slate-50 text-xs font-semibold transition-all shadow-xs"
                 title={`Ban ${job.company} (Exclude all jobs from this company)`}
-                aria-label={`Ban ${job.company}`}
               >
                 <Ban className="w-4 h-4" />
               </button>
@@ -273,7 +286,7 @@ export default function JobDetailDrawer({
               href={job.application_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-xl text-xs font-semibold transition-all shadow-sm"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white rounded-xl text-xs font-semibold transition-all shadow-xs"
             >
               <span>Apply Directly</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -282,13 +295,13 @@ export default function JobDetailDrawer({
         )}
 
         {/* Tab Navigation */}
-        <div className="flex items-center border-b border-white/[0.08] px-6 bg-obsidian-900/20">
+        <div className="flex items-center border-b border-slate-200 px-6 bg-slate-50/50">
           <button
             onClick={() => setActiveTab("overview")}
             className={`py-3 px-3 text-xs font-medium border-b-2 transition-all ${
               activeTab === "overview"
-                ? "border-emerald-500 text-emerald-300 font-semibold"
-                : "border-transparent text-zinc-400 hover:text-zinc-200"
+                ? "border-emerald-600 text-emerald-800 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
             Overview & Skills
@@ -297,19 +310,19 @@ export default function JobDetailDrawer({
             onClick={() => setActiveTab("why")}
             className={`py-3 px-3 text-xs font-medium border-b-2 flex items-center gap-1.5 transition-all ${
               activeTab === "why"
-                ? "border-emerald-500 text-emerald-300 font-semibold"
-                : "border-transparent text-zinc-400 hover:text-zinc-200"
+                ? "border-emerald-600 text-emerald-800 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
             <span>Why This Job?</span>
           </button>
           <button
             onClick={() => setActiveTab("description")}
             className={`py-3 px-3 text-xs font-medium border-b-2 transition-all ${
               activeTab === "description"
-                ? "border-emerald-500 text-emerald-300 font-semibold"
-                : "border-transparent text-zinc-400 hover:text-zinc-200"
+                ? "border-emerald-600 text-emerald-800 font-semibold"
+                : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
             Full Description
@@ -319,12 +332,12 @@ export default function JobDetailDrawer({
         {/* Drawer Body Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {loading ? (
-            <div className="py-20 text-center text-xs text-zinc-500 space-y-2">
+            <div className="py-20 text-center text-xs text-slate-400 space-y-2">
               <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
               <p>Loading full job intelligence...</p>
             </div>
           ) : error ? (
-            <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -335,24 +348,24 @@ export default function JobDetailDrawer({
                 <div className="space-y-6">
                   {/* Key Specifications Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="p-3 rounded-xl bg-obsidian-900/60 border border-white/[0.06] space-y-1">
-                      <span className="text-[10px] text-zinc-500 uppercase font-semibold block">Experience</span>
-                      <span className="text-xs font-medium text-zinc-200">{job.experience}</span>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                      <span className="text-[11px] text-slate-500 uppercase font-bold tracking-wider block">Experience</span>
+                      <span className="text-sm font-bold text-slate-900">{job.experience}</span>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-obsidian-900/60 border border-white/[0.06] space-y-1">
-                      <span className="text-[10px] text-zinc-500 uppercase font-semibold block">Compensation</span>
-                      <span className="text-xs font-medium text-emerald-400">{job.salary || "Not disclosed"}</span>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                      <span className="text-[11px] text-slate-500 uppercase font-bold tracking-wider block">Compensation</span>
+                      <span className="text-sm font-bold text-emerald-800">{job.salary || "Not disclosed"}</span>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-obsidian-900/60 border border-white/[0.06] space-y-1">
-                      <span className="text-[10px] text-zinc-500 uppercase font-semibold block">Workplace</span>
-                      <span className="text-xs font-medium text-zinc-200">{job.remote_type}</span>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                      <span className="text-[11px] text-slate-500 uppercase font-bold tracking-wider block">Workplace</span>
+                      <span className="text-sm font-bold text-slate-900">{job.remote_type}</span>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-obsidian-900/60 border border-white/[0.06] space-y-1">
-                      <span className="text-[10px] text-zinc-500 uppercase font-semibold block">Freshness</span>
-                      <span className="text-xs font-medium text-zinc-200">
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                      <span className="text-[11px] text-slate-500 uppercase font-bold tracking-wider block">Freshness</span>
+                      <span className="text-sm font-bold text-slate-900 font-tabular">
                         {job.age_hours !== undefined ? `${job.age_hours}h ago` : "Fresh"}
                       </span>
                     </div>
@@ -360,18 +373,18 @@ export default function JobDetailDrawer({
 
                   {/* Multi-source attribution */}
                   {job.other_sources && job.other_sources.length > 0 && (
-                    <div className="p-3.5 rounded-xl bg-obsidian-900/40 border border-white/[0.06] space-y-2 text-xs">
-                      <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                        Cross-Platform Deduplication Lineage
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
+                      <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider block">
+                        Cross-Platform Lineage
                       </span>
-                      <p className="text-zinc-500 text-[11px]">
+                      <p className="text-slate-500 text-[11px]">
                         Discovered concurrently on multiple boards:
                       </p>
                       <div className="flex items-center gap-2 flex-wrap">
                         {job.other_sources.map((os, idx) => (
                           <span
                             key={idx}
-                            className="px-2.5 py-1 rounded-lg bg-obsidian-950 border border-white/[0.08] text-xs font-medium text-zinc-300 capitalize"
+                            className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 capitalize shadow-xs"
                           >
                             {os.source}
                           </span>
@@ -382,7 +395,7 @@ export default function JobDetailDrawer({
 
                   {/* Required Skills */}
                   <div className="space-y-2.5">
-                    <h4 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                       Required Skills ({job.required_skills.length})
                     </h4>
                     <div className="flex flex-wrap gap-1.5">
@@ -395,8 +408,8 @@ export default function JobDetailDrawer({
                             key={s}
                             className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                               isMatched
-                                ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold"
-                                : "bg-obsidian-900 text-zinc-300 border border-white/[0.08]"
+                                ? "bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold"
+                                : "bg-slate-100 text-slate-700 border border-slate-200"
                             }`}
                           >
                             {s} {isMatched && "✓"}
@@ -409,14 +422,14 @@ export default function JobDetailDrawer({
                   {/* Preferred Skills */}
                   {job.preferred_skills && job.preferred_skills.length > 0 && (
                     <div className="space-y-2.5">
-                      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                        Preferred / Nice-to-Have Skills ({job.preferred_skills.length})
+                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                        Preferred Skills ({job.preferred_skills.length})
                       </h4>
                       <div className="flex flex-wrap gap-1.5">
                         {job.preferred_skills.map((s) => (
                           <span
                             key={s}
-                            className="px-2.5 py-0.5 rounded-lg bg-obsidian-900/70 border border-white/[0.06] text-xs text-zinc-400 font-medium"
+                            className="px-2.5 py-0.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 font-medium"
                           >
                             {s}
                           </span>
@@ -427,12 +440,12 @@ export default function JobDetailDrawer({
 
                   {/* Match Rationale snippet */}
                   {match && (
-                    <div className="p-4 rounded-xl bg-obsidian-900/60 border border-white/[0.08] space-y-2 text-xs">
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-zinc-200">6-Dimension Match Assessment</span>
-                        <span className="font-tabular font-bold text-emerald-400">{match.overall_score}%</span>
+                        <span className="font-bold text-slate-800">Match Assessment</span>
+                        <span className="font-tabular font-bold text-emerald-700 text-sm">{match.overall_score}%</span>
                       </div>
-                      <p className="text-zinc-400 leading-relaxed">{match.explanation}</p>
+                      <p className="text-slate-600 leading-relaxed">{match.explanation}</p>
                     </div>
                   )}
                 </div>
@@ -449,13 +462,13 @@ export default function JobDetailDrawer({
               {activeTab === "description" && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                       Original Job Posting Description
                     </h4>
-                    <span className="text-[11px] text-zinc-500">Source: {job.source}</span>
+                    <span className="text-xs text-slate-500 font-medium">Source: {job.source}</span>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-obsidian-900/50 border border-white/[0.06] text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap font-sans">
+                  <div className="p-5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-800 leading-relaxed whitespace-pre-wrap font-sans max-w-none">
                     {job.description || "No full description provided for this listing."}
                   </div>
                 </div>

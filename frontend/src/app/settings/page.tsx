@@ -173,8 +173,8 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-sm text-zinc-500 font-mono">
-        <RefreshCw className="w-4 h-4 animate-spin mr-2 text-emerald-400" />
+      <div className="flex items-center justify-center py-24 text-sm text-slate-500 font-mono">
+        <RefreshCw className="w-4 h-4 animate-spin mr-2 text-emerald-600" />
         Loading settings and audit telemetry...
       </div>
     );
@@ -182,7 +182,7 @@ export default function SettingsPage() {
 
   if (!prefs) {
     return (
-      <div className="p-8 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] text-center text-sm text-zinc-400">
+      <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center text-sm text-slate-600 shadow-card-subtle">
         Preferences service unreachable. Ensure FastAPI backend is running on port 8000.
       </div>
     );
@@ -194,13 +194,15 @@ export default function SettingsPage() {
   return (
     <div className="space-y-8 pb-16">
       {/* Action Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/[0.08]">
-        <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono uppercase tracking-wider mb-2">
-            <span>Automated Ingestion & Diagnostics</span>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono tracking-wider uppercase">
+              AUTOMATED INGESTION & DIAGNOSTICS
+            </span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">System Settings & Scheduler</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">System Settings & Scheduler</h1>
+          <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">
             Configure automated crawl schedules, audit ingestion logs, and run telemetry diagnostics.
           </p>
         </div>
@@ -208,34 +210,31 @@ export default function SettingsPage() {
 
       {message && (
         <div
-          className={`p-4 rounded-xl flex items-center gap-3 text-xs border backdrop-blur-md transition-all ${
+          className={`p-3.5 rounded-xl flex items-center gap-3 text-xs border transition-all ${
             message.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-              : "bg-rose-500/10 border-rose-500/20 text-rose-300"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
           }`}
         >
           {message.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           ) : (
-            <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
           )}
-          <span className="font-medium">{message.text}</span>
+          <span className="font-semibold">{message.text}</span>
         </div>
       )}
 
-
-
-
       {/* Scheduler Configuration Card */}
-      <div className="p-6 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset space-y-6">
+      <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-card-subtle space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+            <div className="p-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-600">
               <CalendarClock className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-white">Automated Ingestion Schedule</h3>
-              <p className="text-[11px] text-zinc-400">
+              <h3 className="text-sm font-bold text-slate-900">Automated Ingestion Schedule</h3>
+              <p className="text-[11px] text-slate-500">
                 Periodic background worker runs crawl, freshness gate, and dedup pipeline automatically.
               </p>
             </div>
@@ -244,7 +243,7 @@ export default function SettingsPage() {
           <button
             onClick={handleTriggerScheduleNow}
             disabled={triggeringSchedule}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs font-medium transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-semibold transition-colors shadow-xs"
           >
             <Play className={`w-3.5 h-3.5 ${triggeringSchedule ? "animate-spin" : ""}`} />
             <span>{triggeringSchedule ? "Triggering..." : "Run Schedule Now"}</span>
@@ -270,15 +269,17 @@ export default function SettingsPage() {
                 onClick={() => handleUpdateInterval(opt.hours, opt.enabled)}
                 className={`p-4 rounded-xl border text-left transition-all ${
                   isSelected
-                    ? "bg-emerald-950/40 border-emerald-500/40 text-white shadow-surface-glow"
-                    : "bg-obsidian-950/40 border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:border-white/[0.12]"
+                    ? "bg-emerald-50/70 border-emerald-300 text-slate-900 shadow-xs"
+                    : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 hover:bg-slate-50/60"
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold">{opt.label}</span>
-                  {isSelected && <span className="w-2 h-2 rounded-full bg-emerald-400"></span>}
+                  <span className={`text-xs font-bold ${isSelected ? "text-emerald-950" : "text-slate-800"}`}>
+                    {opt.label}
+                  </span>
+                  {isSelected && <span className="w-2 h-2 rounded-full bg-emerald-600"></span>}
                 </div>
-                <span className="text-[11px] text-zinc-500 block font-mono">
+                <span className="text-[11px] text-slate-500 block font-mono">
                   {opt.enabled ? `Runs 4x/day (${opt.hours}h window)` : "Triggered on demand only"}
                 </span>
               </button>
@@ -288,21 +289,21 @@ export default function SettingsPage() {
 
         {/* Schedule Timing Status */}
         {schedule && (
-          <div className="p-4 rounded-xl bg-obsidian-950/60 border border-white/[0.06] flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
-            <div className="flex items-center gap-2 text-zinc-400">
-              <Clock className="w-4 h-4 text-zinc-500" />
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
+            <div className="flex items-center gap-2 text-slate-600">
+              <Clock className="w-4 h-4 text-slate-400" />
               <span>
                 Status:{" "}
-                <strong className={schedule.auto_sync_enabled ? "text-emerald-400" : "text-amber-400"}>
+                <strong className={schedule.auto_sync_enabled ? "text-emerald-700 font-bold" : "text-amber-700 font-bold"}>
                   {schedule.auto_sync_enabled ? `Active (${schedule.sync_interval_hours}h)` : "Disabled"}
                 </strong>
               </span>
             </div>
 
             {schedule.next_run_at && (
-              <div className="text-zinc-400">
+              <div className="text-slate-600">
                 Next scheduled sync:{" "}
-                <span className="text-zinc-200">
+                <span className="text-slate-900 font-semibold">
                   {new Date(schedule.next_run_at).toLocaleString("en-IN", {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -314,9 +315,9 @@ export default function SettingsPage() {
             )}
 
             {schedule.last_auto_sync_at && (
-              <div className="text-zinc-400">
+              <div className="text-slate-600">
                 Last run:{" "}
-                <span className="text-zinc-300">
+                <span className="text-slate-900 font-semibold">
                   {new Date(schedule.last_auto_sync_at).toLocaleString("en-IN", {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -331,31 +332,31 @@ export default function SettingsPage() {
       </div>
 
       {/* Sync Ingestion Audit History */}
-      <div className="p-6 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset space-y-4">
+      <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-card-subtle space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-zinc-500/10 border border-white/[0.08] text-zinc-400">
+            <div className="p-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-600">
               <History className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-white">Ingestion Audit Log</h3>
-              <p className="text-[11px] text-zinc-400">Recent cron and manual trigger discovery runs</p>
+              <h3 className="text-sm font-bold text-slate-900">Ingestion Audit Log</h3>
+              <p className="text-[11px] text-slate-500">Recent cron and manual trigger discovery runs</p>
             </div>
           </div>
           <button
             onClick={fetchSyncHistory}
             disabled={loadingHistory}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-obsidian-800 hover:bg-obsidian-700 border border-white/[0.08] text-zinc-300 rounded-xl text-xs font-medium transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors shadow-xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? "animate-spin text-emerald-400" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? "animate-spin text-emerald-600" : ""}`} />
             <span>Refresh Logs</span>
           </button>
         </div>
 
         {syncHistory.length > 0 ? (
-          <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
-            <table className="w-full text-left text-xs text-zinc-300">
-              <thead className="text-[11px] uppercase font-mono bg-obsidian-950/80 text-zinc-400 border-b border-white/[0.06]">
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="text-[11px] uppercase font-mono bg-slate-50 text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-4">Timestamp (IST)</th>
                   <th className="py-3 px-4">Source Board</th>
@@ -365,10 +366,10 @@ export default function SettingsPage() {
                   <th className="py-3 px-4">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.04] bg-obsidian-950/40">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {syncHistory.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="py-2.5 px-4 font-mono text-zinc-400">
+                  <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="py-2.5 px-4 font-mono text-slate-500">
                       {new Date(item.timestamp).toLocaleString("en-IN", {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -377,24 +378,24 @@ export default function SettingsPage() {
                         month: "short",
                       })}
                     </td>
-                    <td className="py-2.5 px-4 font-medium text-white capitalize">{item.source}</td>
+                    <td className="py-2.5 px-4 font-semibold text-slate-900 capitalize">{item.source}</td>
                     <td className="py-2.5 px-4 font-tabular">{item.total_discovered ?? "-"}</td>
-                    <td className="py-2.5 px-4 text-cyan-400 font-tabular font-medium">{item.fresh_jobs ?? "-"}</td>
-                    <td className="py-2.5 px-4 text-emerald-400 font-tabular font-semibold">{item.canonical_saved ?? "-"}</td>
+                    <td className="py-2.5 px-4 text-blue-600 font-tabular font-semibold">{item.fresh_jobs ?? "-"}</td>
+                    <td className="py-2.5 px-4 text-emerald-600 font-tabular font-bold">{item.canonical_saved ?? "-"}</td>
                     <td className="py-2.5 px-4">
                       <span
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono ${
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-medium ${
                           item.status === "success"
-                            ? "bg-emerald-500/10 text-emerald-400"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                             : item.status === "error"
-                              ? "bg-rose-500/10 text-rose-400"
-                              : "bg-zinc-500/10 text-zinc-400"
+                              ? "bg-rose-50 text-rose-700 border border-rose-200"
+                              : "bg-slate-100 text-slate-700"
                         }`}
                       >
                         {item.status}
                       </span>
                       {item.error && (
-                        <span className="block text-[10px] text-rose-400/70 mt-0.5 max-w-[200px] truncate">
+                        <span className="block text-[10px] text-rose-600 mt-0.5 max-w-[200px] truncate">
                           {item.error}
                         </span>
                       )}
@@ -405,7 +406,7 @@ export default function SettingsPage() {
             </table>
           </div>
         ) : (
-          <div className="text-xs text-zinc-500 py-6 text-center font-mono bg-obsidian-950/30 rounded-xl border border-white/[0.04]">
+          <div className="text-xs text-slate-500 py-6 text-center font-mono bg-slate-50 rounded-xl border border-slate-200">
             No sync telemetry records logged yet.
           </div>
         )}

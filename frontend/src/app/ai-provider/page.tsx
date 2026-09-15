@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  Cpu,
   Zap,
   Key,
   Globe,
@@ -156,8 +155,8 @@ export default function AIProviderPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-sm text-zinc-500 font-mono">
-        <RefreshCw className="w-4 h-4 animate-spin mr-2 text-purple-400" />
+      <div className="flex items-center justify-center py-24 text-sm text-slate-500 font-mono">
+        <RefreshCw className="w-4 h-4 animate-spin mr-2 text-emerald-600" />
         Loading AI engine providers...
       </div>
     );
@@ -169,31 +168,32 @@ export default function AIProviderPage() {
   return (
     <div className="space-y-8 pb-16 max-w-5xl">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/[0.08]">
-        <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-mono uppercase tracking-wider mb-2">
-            <Cpu className="w-3.5 h-3.5" />
-            <span>Pluggable Multi-Provider LLM Gateway</span>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono tracking-wider uppercase">
+              MULTI-PROVIDER LLM GATEWAY
+            </span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">AI Provider Configuration</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">AI Provider Configuration</h1>
+          <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">
             Choose and configure the LLM backend for resume skill extraction, job enrichment, and explainable matching.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleTestAiConnection}
             disabled={testingAi}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-obsidian-900 hover:bg-obsidian-850 border border-white/[0.08] text-zinc-300 rounded-xl text-xs font-medium transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors shadow-xs"
           >
-            <Zap className={`w-3.5 h-3.5 ${testingAi ? "animate-pulse text-amber-400" : "text-amber-400"}`} />
+            <Zap className={`w-3.5 h-3.5 ${testingAi ? "animate-pulse text-amber-500" : "text-amber-500"}`} />
             <span>{testingAi ? "Testing Ping..." : "Test Connection"}</span>
           </button>
           <button
             onClick={handleSaveAiProvider}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>{saving ? "Saving..." : "Save AI Provider"}</span>
@@ -203,37 +203,37 @@ export default function AIProviderPage() {
 
       {message && (
         <div
-          className={`p-4 rounded-xl flex items-center gap-3 text-xs border backdrop-blur-md transition-all ${
+          className={`p-4 rounded-xl flex items-center gap-3 text-xs border transition-all ${
             message.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-              : "bg-rose-500/10 border-rose-500/20 text-rose-300"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
           }`}
         >
           {message.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           ) : (
-            <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
           )}
-          <span className="font-medium">{message.text}</span>
+          <span className="font-semibold">{message.text}</span>
         </div>
       )}
 
       {/* Live Test Diagnostic Output */}
       {aiTestResult && (
         <div
-          className={`p-4 rounded-xl text-xs border backdrop-blur-md flex items-start gap-3 ${
+          className={`p-4 rounded-xl text-xs border flex items-start gap-3 ${
             aiTestResult.reachable
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-              : "bg-rose-500/10 border-rose-500/20 text-rose-300"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
           }`}
         >
           {aiTestResult.reachable ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
           ) : (
-            <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0" />
           )}
           <div className="flex-1 font-mono">
-            <div className="font-semibold">
+            <div className="font-bold">
               {aiTestResult.reachable ? "Provider Connected Successfully" : "Connection Failed"}
             </div>
             <div className="text-[11px] opacity-80 mt-1 space-y-0.5">
@@ -246,15 +246,15 @@ export default function AIProviderPage() {
       )}
 
       {/* Provider Selector Card */}
-      <div className="p-6 rounded-2xl bg-obsidian-900/60 border border-white/[0.08] shadow-surface-inset space-y-6">
+      <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-card-subtle space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-white">Select AI Engine</h2>
-            <p className="text-xs text-zinc-400 mt-0.5">
+            <h2 className="text-sm font-bold text-slate-900">Select AI Engine</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
               Local Ollama runs completely private with zero cloud cost. Cloud models offer rapid latency and frontier reasoning.
             </p>
           </div>
-          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-purple-500/10 text-purple-300 border border-purple-500/20">
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
             {savedAiProvider ? savedAiProvider.toUpperCase() : "OLLAMA"} ACTIVE
           </span>
         </div>
@@ -286,32 +286,32 @@ export default function AIProviderPage() {
                 }}
                 className={`p-3.5 rounded-xl border text-left transition-all ${
                   isSelected
-                    ? "bg-purple-500/15 border-purple-500/40 shadow-sm"
-                    : "bg-obsidian-950/40 border-white/[0.05] hover:border-white/[0.1] hover:bg-white/[0.02]"
+                    ? "bg-emerald-50/80 border-emerald-300 shadow-xs"
+                    : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60"
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className={`text-xs font-semibold ${isSelected ? "text-purple-300" : "text-zinc-200"}`}>
+                  <span className={`text-xs font-bold ${isSelected ? "text-emerald-900" : "text-slate-800"}`}>
                     {item.name}
                   </span>
                   <div className="flex items-center gap-1">
                     {configuredProviders.includes(item.id) && item.id !== "ollama" && (
-                      <span className="text-[8px] font-mono uppercase px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      <span className="text-[8px] font-mono uppercase px-1 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
                         Saved ✓
                       </span>
                     )}
                     <span
-                      className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded ${
+                      className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-semibold ${
                         item.type === "local"
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "bg-zinc-800 text-zinc-400"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-slate-100 text-slate-600"
                       }`}
                     >
                       {item.type}
                     </span>
                   </div>
                 </div>
-                <div className="text-[11px] text-zinc-400 mt-1 line-clamp-2">{item.description}</div>
+                <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">{item.description}</div>
               </button>
             );
           })}
@@ -320,29 +320,29 @@ export default function AIProviderPage() {
         {/* Capabilities Row */}
         {caps && (
           <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
-            <span className="text-[10px] font-mono uppercase text-zinc-500 tracking-wider mr-1">Capabilities:</span>
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_streaming ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-white/[0.02] text-zinc-600 border-white/[0.04]"}`}>
+            <span className="text-[10px] font-mono uppercase text-slate-400 tracking-wider mr-1">Capabilities:</span>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_streaming ? "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold" : "bg-slate-50 text-slate-400 border-slate-200"}`}>
               {caps.supports_streaming ? "✓ Streaming" : "✕ Streaming"}
             </span>
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_tools ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-white/[0.02] text-zinc-600 border-white/[0.04]"}`}>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_tools ? "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold" : "bg-slate-50 text-slate-400 border-slate-200"}`}>
               {caps.supports_tools ? "✓ Tool Calling" : "✕ Tool Calling"}
             </span>
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_structured_output ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-white/[0.02] text-zinc-600 border-white/[0.04]"}`}>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_structured_output ? "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold" : "bg-slate-50 text-slate-400 border-slate-200"}`}>
               {caps.supports_structured_output ? "✓ Structured Output" : "✕ Structured Output"}
             </span>
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_vision ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-white/[0.02] text-zinc-600 border-white/[0.04]"}`}>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_vision ? "bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold" : "bg-slate-50 text-slate-400 border-slate-200"}`}>
               {caps.supports_vision ? "✓ Vision" : "✕ Vision"}
             </span>
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_reasoning ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-white/[0.02] text-zinc-600 border-white/[0.04]"}`}>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${caps.supports_reasoning ? "bg-amber-50 text-amber-700 border-amber-200 font-semibold" : "bg-slate-50 text-slate-400 border-slate-200"}`}>
               {caps.supports_reasoning ? "✓ Reasoning" : "✕ Reasoning"}
             </span>
           </div>
         )}
 
         {/* Dynamic Credentials & Model Inputs */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-white/[0.06]">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
           <div>
-            <label className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
               Model Override
             </label>
             <input
@@ -360,13 +360,13 @@ export default function AIProviderPage() {
               }
               value={customModel}
               onChange={(e) => setCustomModel(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-obsidian-950/80 border border-white/[0.08] rounded-xl text-white placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50"
+              className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/20 shadow-xs"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-              <Globe className="w-3 h-3 text-zinc-500" />
+            <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Globe className="w-3 h-3 text-slate-400" />
               <span>Base URL (Optional)</span>
             </label>
             <input
@@ -380,13 +380,13 @@ export default function AIProviderPage() {
               }
               value={customBaseUrl}
               onChange={(e) => setCustomBaseUrl(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-obsidian-950/80 border border-white/[0.08] rounded-xl text-white placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50"
+              className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/20 shadow-xs"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-              <Key className="w-3 h-3 text-zinc-500" />
+            <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Key className="w-3 h-3 text-slate-400" />
               <span>API Key {isConfiguredForThisProvider ? "(Configured ✓)" : ""}</span>
             </label>
             <input
@@ -401,10 +401,10 @@ export default function AIProviderPage() {
               value={customApiKey}
               disabled={selectedProvider === "ollama"}
               onChange={(e) => setCustomApiKey(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-obsidian-950/80 border border-white/[0.08] rounded-xl text-white placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50 disabled:opacity-40"
+              className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/20 shadow-xs disabled:opacity-40"
             />
             {isConfiguredForThisProvider && selectedProvider !== "ollama" && (
-              <p className="text-[10px] text-zinc-500 mt-1">
+              <p className="text-[10px] text-slate-500 mt-1">
                 API key currently stored. Fill only to rotate/replace.
               </p>
             )}

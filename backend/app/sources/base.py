@@ -29,6 +29,7 @@ class RawJob(BaseModel):
     experience_raw: str | None = None
     salary_raw: str | None = None
     posted_time_raw: str | None = None
+    company_logo_url: str | None = None
     source_url: str
     application_url: str | None = None
     raw_payload: dict[str, Any] = Field(default_factory=dict)
@@ -43,6 +44,7 @@ class NormalizedJob(BaseModel):
     role_category: str
     company_name: str
     normalized_company: str
+    company_logo_url: str | None = None
     description: str
     location: str | None = None
     normalized_location: str

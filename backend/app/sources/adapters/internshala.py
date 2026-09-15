@@ -166,6 +166,7 @@ INTERNSHALA_SELECTORS = {
     "calendar_icon": ".ic-16-calendar",
     "briefcase_icon": ".ic-16-briefcase",
     "row_item": ".row-1-item",
+    "logo": [".internship_logo img", ".company_logo img", "img.company-logo", "div.internship_logo img"],
 }
 
 
@@ -825,6 +826,14 @@ class InternshalaAdapter(JobSource):
             else f"{'Internship' if is_internship else 'Fresher engineering opportunity'} at {company}."
         )
 
+        # 8. Company Logo
+        logo_el = _select_first(card, INTERNSHALA_SELECTORS["logo"])
+        company_logo_url = None
+        if logo_el:
+            raw_src = logo_el.get("src") or logo_el.get("data-src")
+            if raw_src and not raw_src.startswith("data:image"):
+                company_logo_url = urljoin(BASE_URL, raw_src)
+
         source_id = card.get("id") or (rel_url.split("-")[-1] if rel_url else str(uuid.uuid4()))
 
         raw_payload = {
@@ -840,6 +849,7 @@ class InternshalaAdapter(JobSource):
             "is_internship": is_internship,
             "is_senior": is_senior_title(title),
             "raw_posted_text": posted_time_raw,
+            "company_logo_url": company_logo_url,
             "source_url": app_url,
             "scraped_at_iso": datetime.now(timezone.utc).isoformat(),
             "dom_card_id": card.get("id"),
@@ -850,6 +860,7 @@ class InternshalaAdapter(JobSource):
             source_job_id=str(source_id),
             title=title,
             company_name=company,
+            company_logo_url=company_logo_url,
             description=desc,
             location=location,
             remote_type=remote_type,
@@ -1019,6 +1030,7 @@ class InternshalaAdapter(JobSource):
             normalized_title=norm_title,
             company_name=raw.company_name,
             normalized_company=norm_company,
+            company_logo_url=raw.company_logo_url,
             description=desc,
             role_category=category,
             required_skills=required_skills,

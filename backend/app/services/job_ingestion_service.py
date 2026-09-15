@@ -257,9 +257,12 @@ class JobIngestionService:
                             id=uuid.uuid4(),
                             name=norm_job.company_name,
                             normalized_name=norm_job.normalized_company.lower(),
+                            logo_url=norm_job.company_logo_url,
                         )
                         db.add(company)
                         await db.flush()
+                    elif norm_job.company_logo_url and not company.logo_url:
+                        company.logo_url = norm_job.company_logo_url
 
                     # Check if job exists by job_hash or source_url
                     job_stmt = select(Job).where(
@@ -272,6 +275,8 @@ class JobIngestionService:
                         # Update timestamps and activate
                         existing_job.last_seen_at = datetime.now(timezone.utc)
                         existing_job.is_active = True
+                        if norm_job.company_logo_url and not existing_job.company_logo_url:
+                            existing_job.company_logo_url = norm_job.company_logo_url
                         if norm_job.raw_data:
                             existing_job.raw_data = make_json_serializable(norm_job.raw_data)
                         if norm_job.posted_at and (not existing_job.posted_at or norm_job.posted_at > existing_job.posted_at):
@@ -293,6 +298,7 @@ class JobIngestionService:
                             role_category=norm_job.role_category[:50] if norm_job.role_category else None,
                             company_id=company.id,
                             company_name=company.name[:255],
+                            company_logo_url=norm_job.company_logo_url or company.logo_url,
                             description=norm_job.description,
                             location=norm_job.location[:255] if norm_job.location else None,
                             normalized_location=norm_job.normalized_location[:255] if norm_job.normalized_location else None,
