@@ -73,3 +73,6 @@ class SavedJobResponse(BaseModel):
     application_url: str
     posted_at: str | None = None
     updated_at: str
+    match_score: float | None = None
+    match_recommendation: str | None = None
+    match_explanation: str | None = None

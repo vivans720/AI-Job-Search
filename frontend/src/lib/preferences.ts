@@ -1,7 +1,8 @@
 /**
  * Shared preferences definitions, validation, and dual-layer persistence
- * (synchronous localStorage cache + asynchronous FastAPI backend sync).
+* (synchronous localStorage cache + asynchronous FastAPI backend sync).
  */
+import { API_BASE } from "@/lib/api";
 
 export type FreshnessOption = 1 | 4 | 8 | 12 | 16 | 24;
 export type ExperienceOption = "ALL" | "FRESHER" | "0_1" | "1_2" | "2_3" | "3_PLUS";
@@ -205,8 +206,6 @@ export function setLocalPreferences(prefs: UserPreferences): void {
     // Ignore storage quota or disabled exceptions
   }
 }
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**
  * Loads user preferences using dual-layer persistence:

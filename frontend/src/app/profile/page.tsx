@@ -12,8 +12,6 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
-  Star,
-  StarOff,
   AlertTriangle,
 } from "lucide-react";
 import { getApiUrl } from "@/lib/api";
@@ -72,37 +70,11 @@ type SkillCategoryKey =
   | "cloud"
   | "tools";
 
-const SKILL_CATEGORIES: Array<{
-  key: SkillCategoryKey;
-  label: string;
-  placeholder: string;
-}> = [
-  {
-    key: "programming_languages",
-    label: "Programming Languages",
-    placeholder: "e.g. Go, Rust, Java",
-  },
-  {
-    key: "frameworks",
-    label: "Frameworks & Libraries",
-    placeholder: "e.g. Next.js, Django, PyTorch",
-  },
-  {
-    key: "databases",
-    label: "Databases & Stores",
-    placeholder: "e.g. Redis, PostgreSQL, Snowflake",
-  },
-  {
-    key: "cloud",
-    label: "Cloud, DevOps & Infra",
-    placeholder: "e.g. Kubernetes, Terraform, GCP",
-  },
-  {
-    key: "tools",
-    label: "Tools & Architectures",
-    placeholder: "e.g. Kafka, GraphQL, Celery",
-  },
-];
+function formatExperienceLevel(level?: string): string {
+  if (!level) return "Entry Level";
+  if (level.toLowerCase() === "fresher") return "Entry Level (0-1y)";
+  return level;
+}
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
@@ -119,14 +91,7 @@ export default function ProfilePage() {
   // Form Inputs
   const [newTargetRole, setNewTargetRole] = useState("");
   const [newExcludedRole, setNewExcludedRole] = useState("");
-  const [newSkillInput, setNewSkillInput] = useState<Record<SkillCategoryKey, string>>({
-    programming_languages: "",
-    frameworks: "",
-    databases: "",
-    cloud: "",
-    tools: "",
-  });
-  const [activeSkillCategory, setActiveSkillCategory] = useState<SkillCategoryKey>("programming_languages");
+  const [newSkill, setNewSkill] = useState("");
 
   // Destructive Confirmation Modal & Undo Buffer
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -316,47 +281,34 @@ export default function ProfilePage() {
     await updateProfileFields({ excluded_roles: updatedExcluded });
   };
 
-  // Skills Management & Weighting
-  const getCoreSkills = useCallback((): string[] => {
-    if (!profile?.manual_overrides) return [];
-    const core = profile.manual_overrides.core_skills;
-    return Array.isArray(core) ? (core as string[]) : [];
-  }, [profile]);
-
-  const isSkillCore = (skill: string) => {
-    return getCoreSkills().includes(skill);
-  };
-
-  const handleToggleSkillWeight = async (skill: string) => {
+  // Skills Management (Flat list add/remove)
+  const handleRemoveSkill = async (skillToRemove: string) => {
     if (!profile) return;
-    const currentCore = getCoreSkills();
-    const isCurrentlyCore = currentCore.includes(skill);
-    const updatedCore = isCurrentlyCore
-      ? currentCore.filter((s) => s !== skill)
-      : [...currentCore, skill];
+    const updatedSkills = (profile.skills || []).filter((s) => s !== skillToRemove);
 
-    const currentOverrides: Record<string, unknown> = {
-      ...(profile.manual_overrides || {}),
-      core_skills: updatedCore,
-    };
+    // Also clean up from category arrays if present
+    const categoryUpdates: Partial<CandidateProfile> = {};
+    const catKeys: SkillCategoryKey[] = [
+      "programming_languages",
+      "frameworks",
+      "databases",
+      "cloud",
+      "tools",
+    ];
+    for (const key of catKeys) {
+      if (profile[key] && profile[key].includes(skillToRemove)) {
+        categoryUpdates[key] = profile[key].filter((s) => s !== skillToRemove);
+      }
+    }
 
-    await updateProfileFields({
-      manual_overrides: currentOverrides,
-    });
-  };
-
-  const handleRemoveSkill = async (category: SkillCategoryKey, skillToRemove: string) => {
-    if (!profile) return;
-    const currentList = profile[category] || [];
-    const updatedList = currentList.filter((s) => s !== skillToRemove);
-    const updatedTotalSkills = (profile.skills || []).filter((s) => s !== skillToRemove);
-
-    const currentCore = getCoreSkills();
+    const currentCore = Array.isArray(profile.manual_overrides?.core_skills)
+      ? (profile.manual_overrides.core_skills as string[])
+      : [];
     const updatedCore = currentCore.filter((s) => s !== skillToRemove);
 
     await updateProfileFields({
-      [category]: updatedList,
-      skills: updatedTotalSkills,
+      skills: updatedSkills,
+      ...categoryUpdates,
       manual_overrides: {
         ...(profile.manual_overrides || {}),
         core_skills: updatedCore,
@@ -364,22 +316,20 @@ export default function ProfilePage() {
     });
   };
 
-  const handleAddSkill = async (category: SkillCategoryKey) => {
-    const skillToAdd = newSkillInput[category]?.trim();
+  const handleAddSkill = async (customSkill?: string) => {
+    const skillToAdd = (customSkill || newSkill).trim();
     if (!skillToAdd || !profile) return;
 
-    const currentList = profile[category] || [];
-    if (currentList.some((s) => s.toLowerCase() === skillToAdd.toLowerCase())) return;
+    const currentSkills = profile.skills || [];
+    if (currentSkills.some((s) => s.toLowerCase() === skillToAdd.toLowerCase())) return;
 
-    const updatedList = [...currentList, skillToAdd];
-    const updatedTotalSkills = Array.from(new Set([...(profile.skills || []), skillToAdd]));
+    const updatedSkills = [...currentSkills, skillToAdd];
 
     await updateProfileFields({
-      [category]: updatedList,
-      skills: updatedTotalSkills,
+      skills: updatedSkills,
     });
 
-    setNewSkillInput((prev) => ({ ...prev, [category]: "" }));
+    setNewSkill("");
   };
 
   const activeResume = resumes.find((r) => r.is_active) || resumes[0];
@@ -435,7 +385,7 @@ export default function ProfilePage() {
               <>
                 <span className="text-xs text-slate-400">·</span>
                 <span className="text-xs text-slate-600 font-mono">
-                  {profile.experience_level} ({profile.experience_years}y Exp)
+                  {formatExperienceLevel(profile.experience_level)} ({profile.experience_years}y Exp)
                 </span>
               </>
             )}
@@ -516,9 +466,12 @@ export default function ProfilePage() {
                     Active Resume
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                  SHA256: {activeResume.resume_hash.slice(0, 16)}... · Uploaded{" "}
-                  {new Date(activeResume.created_at).toLocaleDateString()}
+                <p className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span title={`Full SHA256: ${activeResume.resume_hash}`} className="cursor-help underline decoration-dotted underline-offset-2">
+                    SHA256: {activeResume.resume_hash.slice(0, 8)}...
+                  </span>
+                  <span>·</span>
+                  <span>Uploaded {new Date(activeResume.created_at).toLocaleDateString()}</span>
                 </p>
               </div>
             </div>
@@ -541,7 +494,7 @@ export default function ProfilePage() {
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-0.5">
               <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Experience Level</p>
               <p className="text-xs font-bold text-slate-900">
-                {activeResume.extracted_data?.experience_level || profile?.experience_level || "Fresher"}
+                {formatExperienceLevel(activeResume.extracted_data?.experience_level || profile?.experience_level)}
               </p>
             </div>
 
@@ -743,142 +696,64 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Interactive Skills Taxonomy & Weighting */}
-          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-card-subtle space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-900">Skills Taxonomy & Priority Weighting</h3>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 font-mono">
-                    Interactive
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Click the star on any skill to prioritize it as <strong className="text-slate-800">Core (High Weight)</strong> vs Familiar. Delete unwanted skills with (×).
-                </p>
-              </div>
-
-              {/* Category selector tabs for targeted skill addition */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {SKILL_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.key}
-                    onClick={() => setActiveSkillCategory(cat.key)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                      activeSkillCategory === cat.key
-                        ? "bg-slate-900 text-white shadow-xs"
-                        : "bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200"
-                    }`}
-                  >
-                    {cat.label.split(" ")[0]}
-                  </button>
-                ))}
+          {/* Skills */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-card-subtle space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900">Skills</h3>
+                <span className="text-xs text-slate-400 font-mono font-normal">
+                  ({profile.skills?.length || 0})
+                </span>
               </div>
             </div>
 
-            {/* Render Each Skill Category */}
-            <div className="space-y-6">
-              {SKILL_CATEGORIES.map((category) => {
-                const list = profile[category.key] || [];
-                const isSelectedForAdd = activeSkillCategory === category.key;
+            {/* Skills List */}
+            <div className="flex flex-wrap gap-2">
+              {profile.skills && profile.skills.length > 0 ? (
+                profile.skills.map((skill) => (
+                  <span
+                    key={skill}
+                    className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 text-xs rounded-lg font-medium border border-slate-200 bg-slate-50 text-slate-800 shadow-xs hover:border-slate-300 transition-all"
+                  >
+                    <span>{skill}</span>
+                    <button
+                      onClick={() => handleRemoveSkill(skill)}
+                      disabled={saving}
+                      aria-label={`Remove skill ${skill}`}
+                      className="p-1 -mr-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors inline-flex items-center justify-center"
+                      title={`Remove ${skill}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <p className="text-xs text-slate-400">No skills configured. Add skills below.</p>
+              )}
+            </div>
 
-                return (
-                  <div key={category.key} className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-slate-600 font-semibold tracking-wide">
-                        {category.label}
-                        <span className="ml-1.5 text-[10px] text-slate-400 font-mono font-normal">
-                          ({list.length})
-                        </span>
-                      </p>
-                    </div>
-
-                    {/* Skill Pills */}
-                    <div className="flex flex-wrap gap-2">
-                      {list.length > 0 ? (
-                        list.map((skill) => {
-                          const core = isSkillCore(skill);
-                          return (
-                            <span
-                              key={skill}
-                              className={`group inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 text-xs rounded-lg font-medium border transition-all ${
-                                core
-                                  ? "bg-amber-50 border-amber-300 text-amber-900 shadow-xs font-semibold"
-                                  : "bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300"
-                              }`}
-                            >
-                              {/* Toggle Core Weight Button */}
-                              <button
-                                onClick={() => handleToggleSkillWeight(skill)}
-                                disabled={saving}
-                                title={core ? "Demote to Familiar skill" : "Promote to Core (High Priority) skill"}
-                                aria-label={core ? `Demote ${skill}` : `Prioritize ${skill}`}
-                                className={`p-0.5 rounded transition-colors ${
-                                  core
-                                    ? "text-amber-600 hover:text-amber-800"
-                                    : "text-slate-300 hover:text-amber-500"
-                                }`}
-                              >
-                                {core ? (
-                                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                                ) : (
-                                  <StarOff className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100" />
-                                )}
-                              </button>
-
-                              <span>{skill}</span>
-
-                              {/* Remove Skill Button */}
-                              <button
-                                onClick={() => handleRemoveSkill(category.key, skill)}
-                                disabled={saving}
-                                aria-label={`Remove skill ${skill}`}
-                                className="p-0.5 rounded hover:bg-slate-200/80 text-slate-400 hover:text-slate-700 transition-colors ml-0.5"
-                                title={`Remove ${skill}`}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </span>
-                          );
-                        })
-                      ) : (
-                        <p className="text-xs text-slate-400 italic">No skills listed in this category.</p>
-                      )}
-                    </div>
-
-                    {/* Inline Quick Add for this category when selected */}
-                    {isSelectedForAdd && (
-                      <div className="flex items-center gap-2 pt-1 max-w-md">
-                        <label htmlFor={`add-${category.key}`} className="sr-only">
-                          Add skill to {category.label}
-                        </label>
-                        <input
-                          id={`add-${category.key}`}
-                          type="text"
-                          value={newSkillInput[category.key]}
-                          onChange={(e) =>
-                            setNewSkillInput((prev) => ({
-                              ...prev,
-                              [category.key]: e.target.value,
-                            }))
-                          }
-                          onKeyDown={(e) => e.key === "Enter" && handleAddSkill(category.key)}
-                          placeholder={category.placeholder}
-                          className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/20 shadow-xs"
-                        />
-                        <button
-                          onClick={() => handleAddSkill(category.key)}
-                          disabled={saving || !newSkillInput[category.key]?.trim()}
-                          className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 text-white text-xs font-semibold rounded-xl flex items-center gap-1 transition-all shadow-xs"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            {/* Add Skill Input */}
+            <div className="flex items-center gap-2 pt-2 max-w-md">
+              <label htmlFor="skill-input" className="sr-only">
+                Add skill
+              </label>
+              <input
+                id="skill-input"
+                type="text"
+                value={newSkill}
+                onChange={(e) => setNewSkill(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddSkill()}
+                placeholder="e.g. Python, Docker, Next.js"
+                className="flex-1 bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/20 shadow-xs"
+              />
+              <button
+                onClick={() => handleAddSkill()}
+                disabled={saving || !newSkill.trim()}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 text-white text-xs font-semibold rounded-xl flex items-center gap-1 transition-all shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
             </div>
           </div>
 

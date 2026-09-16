@@ -115,6 +115,8 @@ Thumbs.db
 .github/skills/impeccable/
 .github/agents/impeccable*
 .github/hooks/impeccable*
+.devin/skills
+.hermes/skills
 skills-lock.json
 
 # ── One-Off Reports & Research Docs ──

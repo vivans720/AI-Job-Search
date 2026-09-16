@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.config import settings
+from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
 from app.models.match import Match
 from app.models.saved_job import SavedJob
@@ -423,11 +424,27 @@ async def batch_save_or_update_job_status(
 async def get_saved_jobs_for_user(
     db: AsyncSession, user_id: uuid.UUID, status: str | None = None
 ) -> list[dict[str, Any]]:
-    stmt = (
-        select(SavedJob, Job)
-        .join(Job, SavedJob.job_id == Job.id)
-        .where(SavedJob.user_id == user_id, Job.source != "sample")
-    )
+    # Get candidate profile id if exists
+    profile_stmt = select(CandidateProfile.id).where(CandidateProfile.user_id == user_id)
+    profile_res = await db.execute(profile_stmt)
+    profile_id = profile_res.scalar_one_or_none()
+
+    if profile_id:
+        stmt = (
+            select(SavedJob, Job, Match)
+            .join(Job, SavedJob.job_id == Job.id)
+            .outerjoin(
+                Match,
+                (Match.job_id == Job.id) & (Match.profile_id == profile_id),
+            )
+            .where(SavedJob.user_id == user_id, Job.source != "sample")
+        )
+    else:
+        stmt = (
+            select(SavedJob, Job, None)
+            .join(Job, SavedJob.job_id == Job.id)
+            .where(SavedJob.user_id == user_id, Job.source != "sample")
+        )
 
     if status:
         stmt = stmt.where(SavedJob.status == status.upper())
@@ -437,7 +454,7 @@ async def get_saved_jobs_for_user(
     rows = result.all()
 
     saved_list = []
-    for saved, job in rows:
+    for saved, job, match in rows:
         saved_list.append(
             {
                 "saved_id": str(saved.id),
@@ -451,6 +468,9 @@ async def get_saved_jobs_for_user(
                 "application_url": job.application_url,
                 "posted_at": job.posted_at.isoformat() if job.posted_at else None,
                 "updated_at": saved.updated_at.isoformat(),
+                "match_score": match.overall_score if match else None,
+                "match_recommendation": match.recommendation if match else None,
+                "match_explanation": match.explanation if match else None,
             }
         )
     return saved_list
