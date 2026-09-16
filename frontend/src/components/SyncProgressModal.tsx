@@ -5,6 +5,7 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
+  Square,
   Clock,
   X,
 } from "lucide-react";
@@ -21,7 +22,7 @@ export interface SourceProgress {
 }
 
 export interface SyncResultSummary {
-  status: "completed" | "partial_success" | "failed" | "blocked";
+  status: "completed" | "partial_success" | "failed" | "blocked" | "cancelled";
   total_discovered?: number;
   canonical_saved?: number;
   updated_existing?: number;
@@ -36,6 +37,7 @@ export interface SyncProgressModalProps {
   jobId: string | null;
   source: string;
   onSyncComplete?: (summary?: SyncResultSummary) => void;
+  onCancelSync?: () => void;
 }
 
 export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
@@ -44,8 +46,10 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
   jobId,
   source,
   onSyncComplete,
+  onCancelSync,
 }) => {
-  const [status, setStatus] = useState<"queued" | "running" | "completed" | "failed">("queued");
+  const [status, setStatus] = useState<"queued" | "running" | "completed" | "failed" | "cancelled">("queued");
+  const [cancelling, setCancelling] = useState(false);
   const [sourcesProgress, setSourcesProgress] = useState<Record<string, SourceProgress>>({
     linkedin: { status: "pending", discovered: 0, saved: 0, updated: 0, duplicates: 0, rejected: 0, skills: 0, embeddings: 0 },
     naukri: { status: "pending", discovered: 0, saved: 0, updated: 0, duplicates: 0, rejected: 0, skills: 0, embeddings: 0 },
@@ -102,7 +106,7 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
           setSourcesProgress((prev) => ({ ...prev, ...data.progress }));
         }
 
-        const isTerminal = ["completed", "failed", "blocked", "partial_success"].includes(currentStatus);
+        const isTerminal = ["completed", "failed", "blocked", "partial_success", "cancelled"].includes(currentStatus);
 
         // Final result stats if completed or partial_success
         if (currentStatus === "completed" || currentStatus === "partial_success") {
@@ -155,6 +159,18 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
             autoCloseTimer = setTimeout(() => {
               if (isMounted && onCloseRef.current) onCloseRef.current();
             }, 1800);
+          }
+          return;
+        } else if (currentStatus === "cancelled") {
+          setError("Sync stopped by user.");
+          if (!hasCompletedRef.current) {
+            hasCompletedRef.current = true;
+            if (onSyncCompleteRef.current) {
+              onSyncCompleteRef.current({
+                status: "cancelled",
+                error: "Sync cancelled by user.",
+              });
+            }
           }
           return;
         } else if (currentStatus === "failed" || currentStatus === "blocked") {
@@ -267,19 +283,57 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
     return 15;
   };
 
+  const handleCancel = async () => {
+    if (!jobId || cancelling) return;
+    setCancelling(true);
+    try {
+      await fetch(`http://localhost:8000/api/v1/jobs/sync/cancel/${jobId}`, {
+        method: "POST",
+      });
+      setStatus("cancelled");
+      setError("Sync stopped by user.");
+      if (onCancelSync) onCancelSync();
+    } catch {
+      setError("Failed to stop sync.");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const getStatusBadgeClass = () => {
+    switch (status) {
+      case "completed":
+        return "bg-emerald-100 text-emerald-800 border-emerald-300";
+      case "cancelled":
+        return "bg-amber-100 text-amber-800 border-amber-300";
+      case "failed":
+        return "bg-rose-100 text-rose-800 border-rose-300";
+      case "running":
+        return "bg-blue-100 text-blue-800 border-blue-300 animate-pulse";
+      default:
+        return "bg-slate-200 text-slate-700";
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in">
       <div className="relative w-full max-w-xl rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden font-sans text-slate-800">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600">
-              <RefreshCw className={`w-4 h-4 ${status !== "completed" ? "animate-spin" : ""}`} />
+            <div className={`p-2 rounded-xl border ${
+              status === "completed"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-600"
+                : status === "cancelled"
+                ? "bg-amber-50 border-amber-200 text-amber-600"
+                : "bg-blue-50 border-blue-200 text-blue-600"
+            }`}>
+              <RefreshCw className={`w-4 h-4 ${status === "running" || status === "queued" ? "animate-spin" : ""}`} />
             </div>
             <div>
               <h3 className="text-sm font-semibold tracking-tight text-slate-900 flex items-center gap-2">
                 Ingestion Pipeline Telemetry
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 uppercase font-bold">
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded border uppercase font-bold ${getStatusBadgeClass()}`}>
                   {status}
                 </span>
               </h3>
@@ -290,7 +344,7 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -430,14 +484,30 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
         {/* Modal Footer */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-slate-200 bg-slate-50 text-xs">
           <span className="text-slate-500 font-mono text-[11px]">
-            {status === "completed" ? "Ingestion complete" : "Syncing in background worker..."}
+            {status === "completed"
+              ? "Ingestion complete"
+              : status === "cancelled"
+              ? "Sync cancelled"
+              : "Syncing in background worker..."}
           </span>
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold transition-colors shadow-xs"
-          >
-            {status === "completed" ? "Done" : "Dismiss"}
-          </button>
+          <div className="flex items-center gap-2">
+            {(status === "running" || status === "queued") && (
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <Square className="w-3 h-3 fill-rose-700" />
+                <span>{cancelling ? "Stopping..." : "Stop Sync"}</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold transition-colors shadow-xs cursor-pointer"
+            >
+              {status === "completed" || status === "cancelled" ? "Done" : "Dismiss"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

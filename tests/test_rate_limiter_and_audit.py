@@ -53,3 +53,28 @@ def test_sync_logger_portable_path(tmp_path):
     recent = get_recent_sync_logs(limit=10, log_file=test_log)
     assert len(recent) == 1
     assert recent[0]["fresh_jobs"] == 8
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_backoff_and_cooldown():
+    """Verify rate limiter triggers exponential cooldown when marked blocked."""
+    limiter = SourceRateLimiter("linkedin")
+    assert not limiter.is_cooling_down()
+
+    limiter.mark_blocked(attempt=1, base_seconds=5.0)
+    assert limiter.is_cooling_down()
+
+
+@pytest.mark.asyncio
+async def test_guest_session_manager(tmp_path):
+    """Verify GuestSessionManager caches and reads public guest tokens."""
+    from app.crawling.guest_session_manager import GuestSessionManager
+    mgr = GuestSessionManager("test_source")
+    mgr.session_file = tmp_path / "test_state.json"
+
+    cookies = {"test_cookie": "xyz123"}
+    mgr.save_cookies(cookies)
+
+    loaded = mgr.load_cached_cookies()
+    assert loaded.get("test_cookie") == "xyz123"
+

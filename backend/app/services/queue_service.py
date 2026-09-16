@@ -149,4 +149,31 @@ class QueueService:
             return {"queue_length": 0, "dlq_length": 0}
 
 
+    async def cancel_job(self, job_id: str) -> bool:
+        redis = await get_redis()
+        if not redis:
+            return False
+
+        try:
+            cancel_key = f"job:{job_id}:cancel_requested"
+            await redis.set(cancel_key, "1", ex=86400)
+            await self.set_job_status(job_id, "cancelled", error="Cancelled by user")
+            logger.info("job_cancellation_requested", job_id=job_id)
+            return True
+        except Exception as e:
+            logger.error("job_cancellation_failed", job_id=job_id, error=str(e))
+            return False
+
+    async def is_job_cancelled(self, job_id: str) -> bool:
+        redis = await get_redis()
+        if not redis:
+            return False
+
+        try:
+            val = await redis.get(f"job:{job_id}:cancel_requested")
+            return bool(val)
+        except Exception:
+            return False
+
+
 task_queue = QueueService()

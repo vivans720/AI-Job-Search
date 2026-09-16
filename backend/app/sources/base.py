@@ -14,7 +14,7 @@ class JobSearchQuery(BaseModel):
     include_remote: bool = True
     include_jobs: bool = True
     include_internships: bool = True
-    limit: int = 50
+    limit: int = 100
 
 
 class RawJob(BaseModel):

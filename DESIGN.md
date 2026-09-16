@@ -1,53 +1,55 @@
 ---
 name: AI Job Agent India
-description: Instrument-grade job discovery radar and triage console for early-career Indian tech talent.
+description: Clean, high-clarity job discovery radar and triage console for early-career Indian tech talent.
 colors:
-  primary: "#10b981"
-  primary-glow: "rgba(16, 185, 129, 0.15)"
-  background: "#090a0f"
-  surface-card: "#0f1118"
-  surface-inset: "#141722"
-  surface-elevated: "#1a1e2d"
-  border-subtle: "rgba(255, 255, 255, 0.07)"
-  border-active: "rgba(255, 255, 255, 0.14)"
-  text-primary: "#f4f4f5"
-  text-secondary: "#a1a1aa"
-  text-tertiary: "#71717a"
-  accent-sky: "#38bdf8"
-  accent-purple: "#c084fc"
-  accent-amber: "#fbbf24"
-  accent-rose: "#f43f5e"
+  primary: "#059669"
+  primary-hover: "#047857"
+  primary-subtle: "#ecfdf5"
+  background: "#f8f9fc"
+  surface-card: "#ffffff"
+  surface-well: "#f1f5f9"
+  surface-hover: "#f8fafc"
+  border-hairline: "rgba(226, 232, 240, 0.9)"
+  border-hairline-strong: "rgba(203, 213, 225, 0.8)"
+  text-primary: "#0f172a"
+  text-secondary: "#475569"
+  text-tertiary: "#94a3b8"
+  signal-emerald: "#059669"
+  signal-amber: "#b45309"
+  signal-rose: "#be123c"
+  signal-sky: "#0284c7"
+  signal-indigo: "#4338ca"
 typography:
   display:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', 'Helvetica Neue', sans-serif"
-    fontSize: "1.5rem"
-    fontWeight: 700
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    fontSize: "1.875rem"
+    fontWeight: 800
     lineHeight: 1.2
-    letterSpacing: "-0.02em"
+    letterSpacing: "-0.025em"
   headline:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', 'Helvetica Neue', sans-serif"
-    fontSize: "1.125rem"
-    fontWeight: 600
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    fontSize: "1.25rem"
+    fontWeight: 700
     lineHeight: 1.3
-    letterSpacing: "-0.015em"
+    letterSpacing: "-0.02em"
   title:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', 'Helvetica Neue', sans-serif"
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 600
     lineHeight: 1.4
     letterSpacing: "-0.01em"
   body:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', 'Helvetica Neue', sans-serif"
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 400
     lineHeight: 1.5
     letterSpacing: "-0.011em"
   label:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', 'Helvetica Neue', sans-serif"
-    fontSize: "0.625rem"
-    fontWeight: 600
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    fontSize: "0.6875rem"
+    fontWeight: 700
     lineHeight: 1
-    letterSpacing: "0.05em"
+    letterSpacing: "0.025em"
 rounded:
   sm: "6px"
   md: "8px"
@@ -64,23 +66,28 @@ components:
   button-primary:
     backgroundColor: "{colors.primary}"
     textColor: "#ffffff"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.lg}"
     padding: "8px 16px"
   button-primary-hover:
-    backgroundColor: "#059669"
+    backgroundColor: "{colors.primary-hover}"
+  button-secondary:
+    backgroundColor: "#ffffff"
+    textColor: "{colors.text-primary}"
+    rounded: "{rounded.lg}"
+    padding: "8px 16px"
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.text-secondary}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.lg}"
     padding: "8px 12px"
   card-base:
     backgroundColor: "{colors.surface-card}"
     rounded: "{rounded.xl}"
-    padding: "16px"
+    padding: "16px sm:20px"
   badge-freshness:
-    backgroundColor: "rgba(16, 185, 129, 0.1)"
+    backgroundColor: "{colors.primary-subtle}"
     textColor: "{colors.primary}"
-    rounded: "{rounded.full}"
+    rounded: "{rounded.sm}"
     padding: "2px 8px"
 ---
 
@@ -88,121 +95,70 @@ components:
 
 ## Overview
 
-**Creative North Star: "The Precision Radar"**
+**Creative North Star: "Precision Daylight Radar"**
 
-AI Job Agent India is built as an instrument-grade radar and high-velocity triage console for early-career software engineers in India. It treats job hunting not as a casual feed to browse, but as an active signal-detection mission where stale postings and noise are filtered out instantly, and every displayed opportunity is backed by transparent, deterministic data.
+AI Job Agent India is an instrument-grade job discovery radar and application triage cockpit designed for early-career tech talent in India. It cuts through noise, ghost jobs, and stale postings with deterministic 24-hour freshness verification and transparent skill-matching breakdown.
 
-The aesthetic is anchored in an ultra-deep Obsidian dark space (`#090a0f`) punctuated by precise, luminous Emerald telemetry accents (`#10b981`) and fine hairline geometric structures (`rgba(255, 255, 255, 0.07)`). It balances compact density with scanability, using tabular typography for scores and timings to minimize cognitive load during triage.
-
-**Key Characteristics:**
-- **Instrument Density:** Information-dense layouts that let candidates evaluate 10+ signals (freshness age, match score, salary, location, tech stack, sources) in a single glance without overwhelming white space.
-- **Luminous Telemetry:** Pure emerald highlights reserved specifically for fresh verified signals, active radar states, and high-confidence match metrics.
-- **Glass & Obsidian Layering:** Subtle tonal steps from base space (`#090a0f`) up to interactive cards (`#0f1118`) with crisp inner highlight borders (`border-white/[0.07]`) rather than fuzzy drop shadows.
+The visual system uses a luminous, high-contrast light theme (`#f8f9fc` background with crisp `#ffffff` cards), deep slate typography (`#0f172a`), emerald signal telemetry (`#059669`), and hairline structural borders (`border-slate-200/90`).
 
 ## Colors
 
-The palette is tuned for prolonged nighttime screening with ultra-high contrast text and muted dark container surfaces.
+### Primary & Telemetry
+- **Primary Emerald** (`#059669`): Verified freshness badges, primary actions, positive alignment.
+- **Deep Emerald Hover** (`#047857`): Interactive button and link hover states.
+- **Subtle Emerald Tint** (`#ecfdf5`): Freshness and apply match badge backgrounds.
 
-### Primary
-- **Radar Emerald** (`#10b981`): The primary signal color. Used strictly for verified freshness indicators, match score badges, active radar status, and primary action buttons.
-- **Deep Emerald** (`#059669`): Hover and interactive active state for primary controls.
+### Semantic Status
+- **Warning Amber** (`#b45309` text, `#fef3c7` bg): Moderate match confidence (`CONSIDER`) and pending review.
+- **Destructive Rose** (`#be123c` text, `#ffe4e6` bg): Rejection actions, missing mandatory skills, and exclusions.
+- **Platform Sky & Indigo** (`#0284c7`, `#4338ca`): Source tags (LinkedIn, Naukri, Internshala).
 
-### Secondary
-- **Telemetry Sky** (`#38bdf8`): Used for secondary platform telemetry (e.g. Internshala/LinkedIn source chips and transferable skill credits).
-- **Signal Purple** (`#c084fc`): Denotes internships, educational qualifications, or special pipeline phases.
-
-### Neutral
-- **Deep Void Background** (`#090a0f`): The foundational background canvas (`obsidian-950`).
-- **Surface Obsidian Base** (`#0f1118`): Standard background for cards, panels, and filter bars (`obsidian-900`).
-- **Surface Inset / Well** (`#141722`): Recessed wells for search fields, dropdown inputs, and nested sub-panels (`obsidian-850`).
-- **Surface Hover / Highlight** (`#1a1e2d`): Hover state for table rows, clickable list items, and action pills (`obsidian-800`).
-- **Hairline Border** (`rgba(255, 255, 255, 0.07)`): The normative structural divider across all panels, drawers, and cards.
-- **Text Primary** (`#f4f4f5`): High-clarity white-zinc text for titles, company names, and crucial metrics.
-- **Text Secondary** (`#a1a1aa`): Muted zinc for descriptions, metadata labels, and timestamps.
-- **Text Tertiary** (`#71717a`): De-emphasized zinc for micro-labels, dividers, and disabled states.
-
-### Semantic Alerts
-- **Warning Amber** (`#fbbf24`): Moderate match confidence (CONSIDER) and pending application states.
-- **Destructive Rose** (`#f43f5e`): Missing critical skills, banned companies, and hard rejection actions.
-
-### Named Rules
-**The Rarity of Emerald Rule.** Radar Emerald is never used for decorative wallpaper or large surface fills. It is strictly reserved for high-signal telemetry: <= 24h freshness badges, strong match confirmation, and primary triage actions.
-**The Ghost Border Rule.** Surfaces are demarcated with `1px border border-white/[0.07]` rather than opaque outlines or heavy shadows, maintaining a lightweight technical feel.
+### Neutral & Surfaces
+- **Canvas Background** (`#f8f9fc`): Base page backdrop.
+- **Surface Cards** (`#ffffff`): Elevated content blocks, drawers, and modals.
+- **Muted Well** (`#f1f5f9` / `#f8fafc`): Inset toolbars, tab wells, and monogram containers.
+- **Structural Borders** (`rgba(226, 232, 240, 0.9)`): Hairline demarcations.
 
 ## Typography
 
-**Display Font:** System Font Stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", sans-serif`)
-**Body Font:** System Font Stack with optical kerning
-**Tabular Figures:** Dedicated `.font-tabular` (`font-variant-numeric: tabular-nums`) applied to scores, hours, percentages, and salaries.
+- **System Stack:** `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`
+- **Monospace Stack:** `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`
+- **Tabular Numerics:** `.font-tabular` (`font-variant-numeric: tabular-nums`) strictly required for match percentages, salary, counts, and hours.
 
-**Character:** High-speed utilitarian clarity. Zero decorative typography; tight letter-spacing (`letter-spacing: -0.011em`) and OpenType feature settings (`"cv02", "cv03", "cv04", "cv11", "ss01"`) ensure clean rendering at compact 10px-12px sizes.
+## Layout & Rhythm
 
-### Hierarchy
-- **Display** (700 bold, `1.5rem` / `24px`, line-height 1.2): Section headers and dashboard hero titles (e.g. "Job Discovery Radar").
-- **Headline** (600 semi-bold, `1.125rem` / `18px`, line-height 1.3): Modal drawer titles and primary job item titles.
-- **Title** (600 semi-bold, `0.875rem` / `14px`, line-height 1.4): Card group headers and company names.
-- **Body** (400 regular, `0.75rem` / `12px`, line-height 1.5): Standard job descriptions, location strings, and filter options.
-- **Label** (600 semi-bold, uppercase, `0.625rem` / `10px`, letter-spacing `0.05em`): Telemetry category headers, freshness tags, source tags, and status pills.
-
-### Named Rules
-**The Tabular Score Rule.** Any dynamic numerical metric (match score percentage, age in hours, salary figures, count pills) must employ `.font-tabular` to prevent jitter during filtering and list re-renders.
-
-## Layout
-
-The layout uses a fixed desktop navigation sidebar (`w-64`) with a sticky viewport height (`h-[100dvh]`), framing a flexible main content canvas with standard horizontal constraints (`max-w-7xl`).
-
-- **Base Rhythm:** 4px geometric scale (`4px`, `8px`, `12px`, `16px`, `24px`).
-- **Card Spacing:** 12px (`gap-3`) to 16px (`gap-4`) vertical stacks between job cards in discovery feeds.
-- **Filter Bar Container:** High-density command bar at the top of feeds grouping search inputs, location dropdowns, experience selectors, and quick-action chips.
-- **Flyout Drawer:** Fixed slide-out drawer on the right (`w-full md:w-[600px] xl:w-[700px]`) for zero-context-loss deep dives into job descriptions and match explanations.
+- **Sidebar Navigation:** Fixed desktop sidebar (`w-60`), sticky full viewport height (`100dvh`).
+- **Main Container:** `max-w-[1520px] mx-auto` with fluid responsive padding (`p-4 sm:p-5 lg:p-6`).
+- **Grid Scale:** 4px geometric intervals (`4px`, `8px`, `12px`, `16px`, `24px`, `32px`).
 
 ## Elevation & Depth
 
-Surfaces are fundamentally layered flat at rest with structural depth established through lightness gradation (`#090a0f` -> `#0f1118` -> `#141722`) and 1px hairline inner borders.
-
-### Shadow Vocabulary
-- **Surface Inset:** `box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.07)` — Provides crisp top-edge lighting to dark cards and navigation pills.
-- **Surface Glow:** `box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.15)` — Soft emerald beacon glow applied to active status pods and live radar indicators.
-
-### Named Rules
-**The Layered Obsidian Rule.** Depth is created through surface contrast and hairline borders, not blurry drop shadows. Drop shadows are strictly forbidden on base cards.
+- Depth is achieved via hairline border contrast (`border-slate-200/90`) and subtle contact shadows (`shadow-xs`, `shadow-card-subtle`), never murky drop shadows.
+- Hover elevation: `shadow-card-hover` with 150ms cubic transition.
 
 ## Shapes
 
-- **Base Radius:** 8px (`rounded-lg`) for controls, inputs, and list items.
-- **Container Radius:** 16px (`rounded-2xl`) for primary cards, filter bars, and modal drawers.
-- **Tag / Badge Radius:** 9999px (`rounded-full`) for match score pills and status chips; 4px–6px (`rounded`) for source tags.
+- **Inputs & Standard Buttons:** `rounded-xl` (12px)
+- **Cards & Filter Bars:** `rounded-2xl` (16px)
+- **Chips & Badges:** `rounded-md` (6px) or `rounded-full` for score pills.
 
 ## Components
 
-### Buttons
-- **Primary:** Background `bg-emerald-600` (`#059669`), text `text-white`, radius `rounded-lg` (8px), padding `8px 16px`. Hover transitions to `bg-emerald-500` with subtle `active:scale-[0.98]`.
-- **Secondary / Ghost:** Background `bg-obsidian-950/60` with `border border-white/[0.08]`, text `text-zinc-300`. Hover brings `text-white` and `border-white/[0.18]`.
-- **Destructive:** Background `bg-rose-500/10`, border `border-rose-500/20`, text `text-rose-400`. Used for reject, hide, and ban actions.
-
-### Job Item Card
-- **Structure:** Rounded container (`rounded-2xl`), border `border-white/[0.08]`, background `bg-obsidian-900/40 hover:bg-obsidian-900/70`.
-- **Left Monogram:** 40x40px avatar box (`bg-obsidian-950 border border-white/[0.08]`) with 2-letter uppercase initials.
-- **Metadata Line:** Muted 12px text separated by middle dots (`·`) displaying company, location, experience, salary, and age.
-
-### Badges & Chips
-- **Freshness Badge:** `bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono text-[10px]`.
-- **Source Pill:** Monospaced 10px uppercase pill colored by origin platform (LinkedIn: blue, Naukri: indigo, Internshala: sky).
-- **Match Score Pill:** Rounded full badge showing `XX% APPLY` or `XX% CONSIDER` with colored dot or border.
-
-### Filter & Search Bar
-- Unified dark bar (`bg-obsidian-900/70`) with subtle backdrop blur (`backdrop-blur-md`), embedded search input, and multi-select pill containers.
+- **Button:** `Button.tsx` supports `primary`, `secondary`, `ghost`, `destructive`, `outline` with loading states.
+- **Badge:** `Badge.tsx` supports semantic badges, `FreshnessBadge`, and `MatchBadge`.
+- **Card:** `Card.tsx` supports `surface`, `interactive`, and `well` containers.
+- **Input:** `Input.tsx` provides accessible, standardized form inputs with icon support.
+- **Tabs:** `Tabs.tsx` provides segmented pill controls with tabular counter pills.
+- **PageHeader:** `PageHeader.tsx` provides standardized section header hierarchy.
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** use `.font-tabular` for all scores, hours, timestamps, and currency amounts.
-- **Do** use `border-white/[0.07]` for structural borders across dark surfaces.
-- **Do** reserve emerald (`#10b981`) for genuine freshness, success, and high-affinity matches.
-- **Do** keep job actions (Details, Save, Reject) accessible directly on the card without hovering.
+- Always use `.font-tabular` on scores, percentages, currency, and timestamps.
+- Use `Button`, `Badge`, `Card`, `Input`, `Tabs`, and `PageHeader` from `@/components/ui`.
+- Keep job actions visible and accessible directly on cards without hiding behind hover.
 
 ### Don't:
-- **Don't** use heavy dark drop shadows that muddy the dark obsidian background.
-- **Don't** use generic saturated blues or purples for primary signals; emerald is the sole system accent.
-- **Don't** drop or hide low-matching jobs without clear score transparency and candidate control.
-- **Don't** use decorative non-functional icons; every icon must communicate concrete state or action.
+- Don't use dark obsidian backgrounds; the project is standardized on the high-contrast light theme.
+- Don't invent custom ad-hoc button or badge classes when UI primitives exist.
+- Don't hide low-matching jobs silently without candidate transparency.

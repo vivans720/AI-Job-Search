@@ -1,7 +1,7 @@
 import math
 import uuid
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from app.schemas.job import (
     JobListItem,
     JobRankRequest,
     JobStatusUpdateRequest,
+    JobSyncRequest,
     SavedJobResponse,
 )
 from app.schemas.match import MatchBreakdown, WhyThisJobResponse
@@ -654,9 +655,30 @@ async def get_job_sync_status(job_id: str):
     return status_data
 
 
+@router.post("/jobs/sync/cancel/{job_id}")
+async def cancel_job_sync(job_id: str):
+    """Cancels an in-progress or queued job synchronization task."""
+    from app.services.queue_service import task_queue
+
+    existing = await task_queue.get_job_status(job_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found or expired")
+
+    success = await task_queue.cancel_job(job_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to request cancellation")
+
+    return {
+        "status": "cancelled",
+        "job_id": job_id,
+        "message": "Sync cancellation request submitted.",
+    }
+
+
 @router.post("/jobs/sync", status_code=202)
 async def trigger_job_sync(
     response: Response,
+    sync_req: JobSyncRequest | None = Body(None),
     source: str = Query("all", description="Job source to sync ('all', 'internshala', 'naukri', 'linkedin')"),
     freshness_hours: int = Query(24, description="Maximum age of job postings in hours (1, 4, 8, 12, 16, 24)"),
     async_mode: bool = Query(True, description="Enqueue in background queue (202) or run synchronous (200)"),
@@ -671,17 +693,55 @@ async def trigger_job_sync(
     if not allowed:
         raise HTTPException(status_code=429, detail="Sync rate limit exceeded. Please wait a minute.")
 
+    effective_source = sync_req.source if (sync_req and sync_req.source) else source
+    effective_freshness = sync_req.freshness_hours if (sync_req and sync_req.freshness_hours) else freshness_hours
+
     # Clamp freshness_hours to allowed values
     allowed_freshness = [1, 4, 8, 12, 16, 24]
-    if freshness_hours not in allowed_freshness:
-        freshness_hours = min(allowed_freshness, key=lambda x: abs(x - freshness_hours))
+    if effective_freshness not in allowed_freshness:
+        effective_freshness = min(allowed_freshness, key=lambda x: abs(x - effective_freshness))
 
-    source_clean = source.strip().lower()
+    source_clean = effective_source.strip().lower()
+
+    # Resolve target skills:
+    # 1. user-specified in request
+    # 2. saved in user preferences (preferred_technologies)
+    # 3. candidate profile top 5 skills
+    # 4. default fallback stack
+    default_skills = ["javascript", "typescript", "react", "node.js", "python"]
+    resolved_skills: list[str] = []
+
+    if sync_req and sync_req.skills:
+        # Strip and filter empty strings
+        resolved_skills = [s.strip().lower() for s in sync_req.skills if s and s.strip()]
+
+    if not resolved_skills:
+        user = await get_or_create_default_user(db)
+        # Check saved sync preferences first
+        from app.services.preference_service import get_or_create_preferences
+        prefs = await get_or_create_preferences(db, user.id)
+        if prefs and getattr(prefs, "preferred_technologies", None):
+            resolved_skills = [
+                s.strip().lower() for s in prefs.preferred_technologies if s and str(s).strip()
+            ]
+
+        # Fall back to candidate profile skills
+        if not resolved_skills:
+            profile = await get_candidate_profile(db, user.id)
+            if profile and profile.skills:
+                resolved_skills = [s.strip().lower() for s in profile.skills[:5] if s and s.strip()]
+
+    if not resolved_skills:
+        resolved_skills = default_skills
 
     if async_mode:
         job_id = await task_queue.enqueue(
             task_type="sync_source",
-            payload={"source": source_clean, "freshness_hours": freshness_hours},
+            payload={
+                "source": source_clean,
+                "freshness_hours": effective_freshness,
+                "skills": resolved_skills,
+            },
         )
         if job_id:
             response.status_code = 202
@@ -689,7 +749,8 @@ async def trigger_job_sync(
                 "job_id": job_id,
                 "status": "queued",
                 "source": source_clean,
-                "freshness_hours": freshness_hours,
+                "freshness_hours": effective_freshness,
+                "skills": resolved_skills,
                 "message": "Job enqueued for background worker processing.",
             }
         logger.warning("redis_queue_unavailable_falling_back_to_sync")
@@ -712,13 +773,12 @@ async def trigger_job_sync(
             raise HTTPException(status_code=404, detail=f"Source '{source}' not found in registry")
         sources_to_sync = [src]
 
-    # Ingest using strictly user-specified tech skills (independent of candidate resume/profile)
-    target_skills = ["javascript", "typescript", "react", "node.js", "python"]
+    target_skills = resolved_skills
 
     ingestion_service = JobIngestionService()
     query = JobSearchQuery(
         skills=target_skills,
-        freshness_hours=freshness_hours,
+        freshness_hours=effective_freshness,
         experience_max=2,
         include_jobs=True,
         include_internships=True,

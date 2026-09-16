@@ -38,7 +38,12 @@ async def process_sync_source_job(job, task_queue):
             raise ValueError(f"Source '{source_clean}' not found in registry")
         sources_to_sync = [src]
 
-    target_skills = ["javascript", "typescript", "react", "node.js", "python"]
+    raw_skills = job.payload.get("skills")
+    if raw_skills and isinstance(raw_skills, list) and len(raw_skills) > 0:
+        target_skills = [str(s).strip().lower() for s in raw_skills if str(s).strip()]
+    else:
+        target_skills = ["javascript", "typescript", "react", "node.js", "python"]
+
     ingestion_service = JobIngestionService()
     query = JobSearchQuery(
         skills=target_skills,
@@ -46,6 +51,7 @@ async def process_sync_source_job(job, task_queue):
         experience_max=2,
         include_jobs=True,
         include_internships=True,
+        limit=settings.SYNC_DEFAULT_JOB_LIMIT,
     )
 
     aggregated_stats = {
@@ -85,10 +91,37 @@ async def process_sync_source_job(job, task_queue):
         }
         for s in sources_to_sync
     }
+
+    if await task_queue.is_job_cancelled(job.id):
+        logger.info("worker_job_cancelled_early", job_id=job.id)
+        aggregated_stats["status"] = "cancelled"
+        await task_queue.set_job_status(
+            job.id,
+            "cancelled",
+            task_type=job.task_type,
+            progress=progress_tracker,
+            result=aggregated_stats,
+            error="Cancelled by user",
+        )
+        return aggregated_stats
+
     await task_queue.set_job_status(job.id, "running", task_type=job.task_type, progress=progress_tracker)
 
     async with async_session_factory() as db:
         for src in sources_to_sync:
+            if await task_queue.is_job_cancelled(job.id):
+                logger.info("worker_job_cancelled_mid_run", job_id=job.id, current_source=src.source_name)
+                aggregated_stats["status"] = "cancelled"
+                await task_queue.set_job_status(
+                    job.id,
+                    "cancelled",
+                    task_type=job.task_type,
+                    progress=progress_tracker,
+                    result=aggregated_stats,
+                    error="Cancelled by user",
+                )
+                return aggregated_stats
+
             progress_tracker[src.source_name]["status"] = "running"
             await task_queue.set_job_status(job.id, "running", task_type=job.task_type, progress=progress_tracker)
 
@@ -254,12 +287,21 @@ async def run_worker():
                         await task_queue.set_job_status(job.id, "completed", task_type=job.task_type, result=res)
                     elif job.task_type == "sync_source":
                         result_stats = await process_sync_source_job(job, task_queue)
-                        await task_queue.set_job_status(
-                            job.id,
-                            "completed",
-                            task_type=job.task_type,
-                            result=result_stats,
-                        )
+                        if result_stats.get("status") == "cancelled" or await task_queue.is_job_cancelled(job.id):
+                            await task_queue.set_job_status(
+                                job.id,
+                                "cancelled",
+                                task_type=job.task_type,
+                                result=result_stats,
+                                error="Cancelled by user",
+                            )
+                        else:
+                            await task_queue.set_job_status(
+                                job.id,
+                                "completed",
+                                task_type=job.task_type,
+                                result=result_stats,
+                            )
                     elif job.task_type == "enrich_job_intelligence":
                         from app.database import async_session_factory
                         from app.intelligence.extractors import enrich_job_record_llm

@@ -277,9 +277,14 @@ class NaukriAdapter(JobSource):
         self._metrics.requests_count += 1
         self._metrics.search_requests_count += 1
 
-        req_headers = headers or HEADERS
-
+        req_headers = dict(headers or HEADERS)
         try:
+            from app.crawling.guest_session_manager import get_guest_session_manager
+            guest_mgr = get_guest_session_manager("naukri")
+            guest_cookies = await guest_mgr.get_valid_cookies()
+            if guest_cookies:
+                req_headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in guest_cookies.items())
+
             result = await resilient_fetch(
                 target_url,
                 headers=req_headers,
@@ -290,6 +295,7 @@ class NaukriAdapter(JobSource):
             self._metrics.retries_count += getattr(result, "retry_count", 0)
 
             if result.status_code in (403, 429) or result.is_blocked:
+                limiter.mark_blocked(attempt=1, base_seconds=15.0)
                 self.status = "blocked"
                 self.last_error = f"HTTP {result.status_code} - blocked by Naukri perimeter"
                 self.last_error_category = "rate_limit_block"
@@ -305,6 +311,7 @@ class NaukriAdapter(JobSource):
             return result.status_code, result.text or ""
 
         except Exception as exc:
+            limiter.mark_blocked(attempt=1, base_seconds=10.0)
             classified = classify_error(exc, self.source_name)
             self.last_error = classified.message
             self.last_error_category = classified.category.value
@@ -603,9 +610,9 @@ class NaukriAdapter(JobSource):
         if self._freshness_hours <= 1:
             max_pages = 1
         elif self._freshness_hours <= 4:
-            max_pages = 2
+            max_pages = getattr(settings, "SYNC_MAX_PAGES_FRESH", 3)
         else:
-            max_pages = 3
+            max_pages = getattr(settings, "SYNC_MAX_PAGES_STANDARD", 5)
 
         logger.info(
             "naukri_search_started",
@@ -620,8 +627,8 @@ class NaukriAdapter(JobSource):
 
         # Global budget: max 1 browser fallback attempt per sync run
         browser_fallback_budget = 1
-        limit = getattr(query, "limit", 50) if isinstance(query, JobSearchQuery) else 50
-        max_target_fresh = 20 if self._freshness_hours <= 1 else max(limit, 50)
+        limit = getattr(query, "limit", None) or getattr(settings, "SYNC_DEFAULT_JOB_LIMIT", 100)
+        max_target_fresh = 20 if self._freshness_hours <= 1 else max(limit, 100)
 
         # For early-career searches (experience_max <= 2), avoid forcing &experience=0
         # which blinds Naukri search to only postings explicitly tagged "Fresher"

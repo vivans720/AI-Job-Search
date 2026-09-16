@@ -556,7 +556,7 @@ class InternshalaAdapter(JobSource):
 
         return None
 
-    async def search(self, query: JobSearchQuery, max_pages_per_category: int = 2) -> list[RawJob]:
+    async def search(self, query: JobSearchQuery, max_pages_per_category: int | None = None) -> list[RawJob]:
         """
         Multi-category and paginated search across Internshala tech listings.
         """
@@ -564,6 +564,7 @@ class InternshalaAdapter(JobSource):
             logger.info("Internshala Adapter is disabled via configuration settings.")
             return []
 
+        resolved_max_pages = max_pages_per_category or getattr(self.settings, "INTERNSHALA_MAX_PAGES", 4)
         paths = self._determine_search_paths(query)
         self._freshness_hours = query.freshness_hours or 24
 
@@ -571,9 +572,9 @@ class InternshalaAdapter(JobSource):
         if self._freshness_hours <= 1:
             effective_max_pages = 1
         elif self._freshness_hours <= 4:
-            effective_max_pages = min(max_pages_per_category, 1)
+            effective_max_pages = min(resolved_max_pages, getattr(self.settings, "SYNC_MAX_PAGES_FRESH", 3) - 1)  # 2 pages
         else:
-            effective_max_pages = max_pages_per_category
+            effective_max_pages = resolved_max_pages  # up to 4 pages
 
         logger.info(
             "internshala_search_started",
@@ -595,10 +596,10 @@ class InternshalaAdapter(JobSource):
         # Global budget: max 1 browser fallback attempt per sync run
         browser_fallback_budget = 1
 
-        limit = getattr(query, "limit", 50) if isinstance(query, JobSearchQuery) else 50
-        max_target_fresh = 20 if self._freshness_hours <= 1 else max(limit, 50)
-        max_jobs_quota = max(limit, 100)
-        max_internships_quota = max(limit, 100)
+        limit = getattr(query, "limit", None) or getattr(self.settings, "SYNC_DEFAULT_JOB_LIMIT", 100)
+        max_target_fresh = 20 if self._freshness_hours <= 1 else max(limit, 100)
+        max_jobs_quota = max(limit, 150)
+        max_internships_quota = max(limit, 150)
         jobs_count = 0
         internships_count = 0
         start_time = asyncio.get_event_loop().time()

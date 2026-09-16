@@ -48,18 +48,49 @@ class Crawl4AICrawlerProvider(CrawlerProvider):
                 }
                 c_mode = cache_mode_map.get(request.cache_mode.upper(), CacheMode.BYPASS)
 
+                source_hint = "default"
+                if "linkedin.com" in request.url:
+                    source_hint = "linkedin"
+                elif "naukri.com" in request.url:
+                    source_hint = "naukri"
+                elif "internshala.com" in request.url:
+                    source_hint = "internshala"
+
+                # Load guest cookies if available
+                from app.crawling.guest_session_manager import get_guest_session_manager
+                guest_mgr = get_guest_session_manager(source_hint)
+                guest_cookies = guest_mgr.load_cached_cookies()
+
                 browser_conf = BrowserConfig(
                     headless=self.headless,
-                    viewport_width=1280,
-                    viewport_height=800,
+                    viewport_width=1440,
+                    viewport_height=900,
                     text_mode=False,
                     light_mode=False,
+                    user_agent=(
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                    ),
+                    headers={
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Sec-Ch-Ua": '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+                        "Sec-Ch-Ua-Mobile": "?0",
+                        "Sec-Ch-Ua-Platform": '"macOS"',
+                    },
                 )
+
+                # Stealth evasion JS to remove webdriver flags & mock plugins
+                stealth_js = (
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+                    "window.chrome = { runtime: {} };"
+                    "Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});"
+                )
+                effective_js = f"{stealth_js}\n{request.js_code}" if request.js_code else stealth_js
 
                 run_conf = CrawlerRunConfig(
                     cache_mode=c_mode,
                     wait_for=request.wait_for,
-                    js_code=request.js_code,
+                    js_code=effective_js,
                     css_selector=request.css_selector,
                     page_timeout=int(request.timeout * 1000),
                 )

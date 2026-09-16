@@ -13,6 +13,9 @@ import {
   AlertCircle,
   RefreshCw,
   AlertTriangle,
+  Check,
+  Bookmark,
+  Layers,
 } from "lucide-react";
 import { getApiUrl } from "@/lib/api";
 
@@ -97,7 +100,88 @@ export default function ProfilePage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [previousRolesForUndo, setPreviousRolesForUndo] = useState<string[] | null>(null);
 
+  // Target Ingestion Skills State (persisted in preferences.preferred_technologies)
+  const [syncSkills, setSyncSkills] = useState<string[]>([]);
+  const [newSyncSkillInput, setNewSyncSkillInput] = useState("");
+  const [savingSyncSkills, setSavingSyncSkills] = useState(false);
+  const [syncSkillsSavedToast, setSyncSkillsSavedToast] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchPreferences = async () => {
+    try {
+      const res = await fetch(getApiUrl("/api/v1/preferences"));
+      if (res.ok) {
+        const prefData = await res.json();
+        if (prefData && Array.isArray(prefData.preferred_technologies)) {
+          setSyncSkills(prefData.preferred_technologies);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSaveSyncSkills = async (customSkills?: string[]) => {
+    const toSave = customSkills !== undefined ? customSkills : syncSkills;
+    setSavingSyncSkills(true);
+    try {
+      const res = await fetch(getApiUrl("/api/v1/preferences"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferred_technologies: toSave }),
+      });
+      if (res.ok) {
+        setSyncSkills(toSave);
+        setSyncSkillsSavedToast(true);
+        setTimeout(() => setSyncSkillsSavedToast(false), 3000);
+        setResumeMessage({
+          type: "success",
+          text: "Scraper target skills saved. Feeds will crawl these skills when synced from Jobs page.",
+        });
+      } else {
+        setResumeMessage({
+          type: "error",
+          text: "Failed to save scraper target skills.",
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Network error.";
+      setResumeMessage({ type: "error", text: msg });
+    } finally {
+      setSavingSyncSkills(false);
+    }
+  };
+
+  const toggleSyncSkill = (skill: string) => {
+    const normalized = skill.trim().toLowerCase();
+    if (syncSkills.some((s) => s.toLowerCase() === normalized)) {
+      setSyncSkills(syncSkills.filter((s) => s.toLowerCase() !== normalized));
+    } else {
+      setSyncSkills([...syncSkills, skill.trim()]);
+    }
+  };
+
+  const handleAddCustomSyncSkill = () => {
+    const trimmed = newSyncSkillInput.trim().toLowerCase();
+    if (!trimmed) return;
+    if (!syncSkills.some((s) => s.toLowerCase() === trimmed)) {
+      setSyncSkills([...syncSkills, trimmed]);
+    }
+    setNewSyncSkillInput("");
+  };
+
+  const handleRemoveSyncSkill = (skillToRemove: string) => {
+    setSyncSkills(syncSkills.filter((s) => s.toLowerCase() !== skillToRemove.toLowerCase()));
+  };
+
+  const handleResetSyncSkillsToTop5 = () => {
+    if (profile?.skills && profile.skills.length > 0) {
+      setSyncSkills(profile.skills.slice(0, 5));
+    } else {
+      setSyncSkills(["javascript", "typescript", "react", "node.js", "python"]);
+    }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -131,7 +215,7 @@ export default function ProfilePage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchProfile(), fetchResumes()]);
+    await Promise.all([fetchProfile(), fetchResumes(), fetchPreferences()]);
     setLoading(false);
   }, []);
 
@@ -750,6 +834,163 @@ export default function ProfilePage() {
                 onClick={() => handleAddSkill()}
                 disabled={saving || !newSkill.trim()}
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 text-white text-xs font-semibold rounded-xl flex items-center gap-1 transition-all shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Dedicated Target Ingestion Skills Card (Permanent In-Page Layout) */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-card-subtle space-y-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+                    <Layers className="w-4 h-4" />
+                  </span>
+                  <h3 className="text-sm font-bold text-slate-900">Target Ingestion Skills</h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  External crawlers (LinkedIn, Naukri, Internshala) search for these exact keywords when you trigger &quot;Sync Feeds&quot; on the Jobs page.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSaveSyncSkills()}
+                  disabled={savingSyncSkills}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-95 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs transition-all cursor-pointer"
+                >
+                  {savingSyncSkills ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : syncSkillsSavedToast ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Saved!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bookmark className="w-3.5 h-3.5" />
+                      <span>Save Sync Skills</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Profile Suggestions Chips */}
+            {profile?.skills && profile.skills.length > 0 && (
+              <div className="pt-1">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    Suggested from your profile (click to toggle)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleResetSyncSkillsToTop5}
+                    className="text-[11px] text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                  >
+                    Reset to top 5
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.skills.slice(0, 10).map((skill) => {
+                    const isSelected = syncSkills.some(
+                      (s) => s.toLowerCase() === skill.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={skill}
+                        type="button"
+                        onClick={() => toggleSyncSkill(skill)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer border ${
+                          isSelected
+                            ? "bg-blue-500/10 text-blue-700 border-blue-200 ring-1 ring-blue-400/20"
+                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                        }`}
+                      >
+                        {isSelected ? "✓ " : "+ "}
+                        {skill}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Active Target Skills Box */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Active crawl targets ({syncSkills.length})
+                </span>
+                {syncSkills.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSyncSkills([])}
+                    className="text-[11px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+
+              <div className="min-h-[56px] p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-wrap gap-1.5 items-center">
+                {syncSkills.length === 0 ? (
+                  <span className="text-xs text-slate-400 italic px-1">
+                    No custom target skills configured. Ingestion crawler will fall back to your top 5 profile skills.
+                  </span>
+                ) : (
+                  syncSkills.map((skill) => (
+                    <span
+                      key={skill}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 text-slate-800 text-xs font-medium rounded-lg shadow-2xs"
+                    >
+                      {skill}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSyncSkill(skill)}
+                        className="text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                        title={`Remove ${skill}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Add custom skill input */}
+            <div className="flex items-center gap-2 max-w-md">
+              <label htmlFor="sync-skill-input" className="sr-only">
+                Add target ingestion skill
+              </label>
+              <input
+                id="sync-skill-input"
+                type="text"
+                value={newSyncSkillInput}
+                onChange={(e) => setNewSyncSkillInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    handleAddCustomSyncSkill();
+                  }
+                }}
+                placeholder="Add another skill (e.g. Next.js, Go, Docker)..."
+                className="flex-1 bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-xs"
+              />
+              <button
+                type="button"
+                onClick={handleAddCustomSyncSkill}
+                disabled={!newSyncSkillInput.trim()}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-40 rounded-xl text-xs font-medium transition-all active:scale-95 cursor-pointer flex items-center gap-1 shadow-2xs"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add</span>

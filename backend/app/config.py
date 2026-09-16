@@ -148,6 +148,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_INTERNSHALA_RATE: int = 20
     RATE_LIMIT_INTERNSHALA_PER: float = 60.0
 
+    # Sync Query & Pagination Limits
+    SYNC_DEFAULT_JOB_LIMIT: int = 100
+    SYNC_MAX_PAGES_FRESH: int = 3
+    SYNC_MAX_PAGES_STANDARD: int = 5
+    INTERNSHALA_MAX_PAGES: int = 4
+
     # Audit logging
     SYNC_AUDIT_LOG_PATH: str = "backend/data/sync_log.jsonl"
 

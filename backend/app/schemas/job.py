@@ -76,3 +76,9 @@ class SavedJobResponse(BaseModel):
     match_score: float | None = None
     match_recommendation: str | None = None
     match_explanation: str | None = None
+
+
+class JobSyncRequest(BaseModel):
+    source: str = "all"
+    freshness_hours: int = 24
+    skills: list[str] | None = None

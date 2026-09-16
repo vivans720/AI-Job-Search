@@ -19,9 +19,7 @@ import {
   Check,
   Ban,
   Sliders,
-  TrendingUp,
-  Filter,
-  Zap,
+  Activity,
 } from "lucide-react";
 import { SyncProgressModal } from "@/components/SyncProgressModal";
 import JobDetailDrawer from "@/components/jobs/JobDetailDrawer";
@@ -132,7 +130,6 @@ export default function JobsPage() {
   const [excludedCompanies, setExcludedCompanies] = useState<string[]>([]);
   const [applyingPrefs, setApplyingPrefs] = useState(false);
   const [prefToast, setPrefToast] = useState<string | null>(null);
-  const [quickRoleFilter, setQuickRoleFilter] = useState<string>("ALL");
   const [activeCardIndex, setActiveCardIndex] = useState<number>(0);
 
   // Pagination state
@@ -173,8 +170,17 @@ export default function JobsPage() {
     setSyncJobId(null);
     setSyncModalOpen(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/jobs/sync?source=${encodeURIComponent(src)}&freshness_hours=${syncFreshness}`, {
+      const payload = {
+        source: src,
+        freshness_hours: syncFreshness,
+      };
+
+      const res = await fetch("http://localhost:8000/api/v1/jobs/sync", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         setSyncNotification({ type: "error", message: `Failed to sync with ${src}.` });
@@ -743,27 +749,7 @@ export default function JobsPage() {
       if (isExcluded) return false;
     }
 
-    // Quick filter right widget filtering
-    if (quickRoleFilter !== "ALL") {
-      const titleLower = (job.title || "").toLowerCase();
-      const skillsStr = (job.required_skills || []).join(" ").toLowerCase();
-      if (quickRoleFilter === "SOFTWARE_ENGINEER") {
-        if (!titleLower.includes("software") && !titleLower.includes("engineer") && !titleLower.includes("sde")) return false;
-      } else if (quickRoleFilter === "FULL_STACK") {
-        if (!titleLower.includes("full stack") && !titleLower.includes("fullstack") && !titleLower.includes("full-stack")) return false;
-      } else if (quickRoleFilter === "BACKEND") {
-        if (!titleLower.includes("backend") && !titleLower.includes("back end") && !titleLower.includes("back-end") && !skillsStr.includes("django") && !skillsStr.includes("fastapi") && !skillsStr.includes("node")) return false;
-      } else if (quickRoleFilter === "FRONTEND") {
-        if (!titleLower.includes("frontend") && !titleLower.includes("front end") && !titleLower.includes("front-end") && !titleLower.includes("react") && !titleLower.includes("angular")) return false;
-      } else if (quickRoleFilter === "DEVOPS") {
-        if (!titleLower.includes("devops") && !titleLower.includes("cloud") && !titleLower.includes("sre") && !skillsStr.includes("docker") && !skillsStr.includes("kubernetes")) return false;
-      } else if (quickRoleFilter === "DATA_AI") {
-        if (!titleLower.includes("data") && !titleLower.includes("ai") && !titleLower.includes("ml") && !titleLower.includes("machine learning") && !skillsStr.includes("pytorch")) return false;
-      } else if (quickRoleFilter === "REMOTE_ONLY") {
-        const isRem = (job.remote_type || "").toLowerCase().includes("remote") || (job.location || "").toLowerCase().includes("remote");
-        if (!isRem) return false;
-      }
-    }
+
 
     return true;
   });
@@ -990,10 +976,21 @@ export default function JobsPage() {
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3.5 pointer-events-none" />
           </div>
 
+          {syncJobId && (
+            <button
+              onClick={() => setSyncModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-xs"
+              title="View Ingestion Progress"
+            >
+              <Activity className={`w-3.5 h-3.5 ${syncing ? "animate-pulse text-blue-600" : ""}`} />
+              <span>Telemetry</span>
+            </button>
+          )}
+
           <button
             onClick={() => handleSyncLive()}
             disabled={syncing}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-xs"
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
             <span>{syncing ? "Syncing..." : "Sync Feeds"}</span>
@@ -1010,7 +1007,17 @@ export default function JobsPage() {
               : "bg-rose-50 border-rose-200 text-rose-800"
           }`}
         >
-          <span className="font-semibold">{syncNotification.message}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">{syncNotification.message}</span>
+            {syncJobId && (
+              <button
+                onClick={() => setSyncModalOpen(true)}
+                className="underline font-bold hover:opacity-80 ml-1 cursor-pointer"
+              >
+                View Telemetry
+              </button>
+            )}
+          </div>
           <button
             onClick={() => setSyncNotification(null)}
             aria-label="Dismiss notification"
@@ -1067,652 +1074,484 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* 2-Column Main Discovery Layout: Stream Left (68%) + Widgets Right (32%) */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Search Dock + Filter Controls + Job Cards */}
-        <div className="xl:col-span-8 2xl:col-span-9 space-y-4">
-          {/* Command Dock: Search bar + Hubs + Dropdowns matching screenshot */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-4 shadow-card-subtle">
-            {/* Search Input Bar with Command-K indicator */}
-            <form onSubmit={handleSearchSubmit} className="relative flex items-center rounded-xl bg-slate-50/80 border border-slate-200/80 focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/10 transition-all p-1">
-              <Search className="w-4 h-4 text-slate-400 ml-3 shrink-0" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by role, company, skill or keyword..."
-                className="bg-transparent text-slate-800 text-xs sm:text-sm font-medium focus:outline-none flex-1 px-3 py-2 placeholder:text-slate-400"
-              />
-              <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-mono text-slate-400 mr-2 shadow-xs">
-                <span>⌘</span>
-                <span>K</span>
-              </div>
-              {query && (
-                <button
-                  type="button"
-                  onClick={clearQuery}
-                  className="p-1 mr-1 text-slate-400 hover:text-slate-700 transition-colors"
-                  title="Clear search"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+      {/* Streamlined Discovery Layout: Full-Width Focused Stream */}
+      <div className="w-full space-y-4">
+        {/* Command Dock: Search bar + Hubs + Dropdowns */}
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 space-y-3.5 shadow-sm">
+          {/* Search Input Bar with Command-K indicator */}
+          <form onSubmit={handleSearchSubmit} className="relative flex items-center rounded-xl bg-slate-50 border border-slate-200/90 focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-100 transition-all p-1">
+            <Search className="w-4 h-4 text-slate-400 ml-3 shrink-0" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by role, company, skill or keyword..."
+              className="bg-transparent text-slate-900 text-xs sm:text-sm font-medium focus:outline-none flex-1 px-3 py-2 placeholder:text-slate-400"
+            />
+            <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-mono text-slate-400 mr-2 shadow-xs">
+              <span>⌘</span>
+              <span>K</span>
+            </div>
+            {query && (
               <button
-                type="submit"
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all shadow-xs active:scale-[0.98]"
+                type="button"
+                onClick={clearQuery}
+                className="p-1 mr-1 text-slate-400 hover:text-slate-700 transition-colors"
+                title="Clear search"
               >
-                Search
+                <X className="w-4 h-4" />
               </button>
-            </form>
+            )}
+            <button
+              type="submit"
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all shadow-xs active:scale-[0.98]"
+            >
+              Search
+            </button>
+          </form>
 
-            {/* Hubs row: Horizontal pills matching reference design */}
-            <div className="flex items-center gap-1.5 flex-wrap text-xs pt-0.5">
-              <span className="text-xs text-slate-500 font-semibold mr-1 flex items-center gap-1 shrink-0">
-                <MapPin className="w-3.5 h-3.5 text-slate-400" /> Hubs:
+          {/* Hubs row: Clean subtle pills */}
+          <div className="flex items-center gap-1.5 flex-wrap text-xs pt-0.5">
+            <span className="text-xs text-slate-500 font-semibold mr-1 flex items-center gap-1 shrink-0">
+              <MapPin className="w-3.5 h-3.5 text-slate-400" /> Hubs:
+            </span>
+
+            <button
+              onClick={clearLocations}
+              className={`px-2.5 py-1 rounded-lg text-xs transition-all border shrink-0 ${
+                selectedLocations.length === 0
+                  ? "bg-slate-900 text-white font-semibold border-slate-900 shadow-xs"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
+              }`}
+            >
+              <span>All India</span>
+              <span className={`ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-tabular ${selectedLocations.length === 0 ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"}`}>
+                {counts.all}
               </span>
+            </button>
 
-              <button
-                onClick={clearLocations}
-                className={`px-2.5 py-1 rounded-lg text-xs transition-all border shrink-0 ${
-                  selectedLocations.length === 0
-                    ? "bg-slate-900 text-white font-semibold border-slate-900 shadow-xs"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
-                }`}
-              >
-                <span>All India</span>
-                <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-tabular ${selectedLocations.length === 0 ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-500"}`}>
-                  {counts.all}
-                </span>
-              </button>
-
-              {["Bengaluru", "Delhi NCR", "Hyderabad", "Pune", "Remote"].map((hub) => {
-                const isSelected = selectedLocations.includes(hub);
-                const count = locationCounts[hub] ?? 0;
-                return (
-                  <button
-                    key={hub}
-                    onClick={() => toggleLocation(hub)}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all border shrink-0 ${
-                      isSelected
-                        ? "bg-blue-50 border-blue-200 text-blue-700 font-semibold shadow-xs"
-                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
-                    }`}
-                  >
-                    <span>{hub}</span>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-tabular ${isSelected ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-
-              {/* Location Dropdown Trigger */}
-              <div className="relative shrink-0" ref={locationDropdownRef}>
+            {["Bengaluru", "Delhi NCR", "Hyderabad", "Pune", "Remote"].map((hub) => {
+              const isSelected = selectedLocations.includes(hub);
+              const count = locationCounts[hub] ?? 0;
+              return (
                 <button
-                  type="button"
-                  onClick={() => setLocationDropdownOpen((open) => !open)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all border ${
-                    selectedLocations.some((loc) => !["Bengaluru", "Delhi NCR", "Hyderabad", "Pune", "Remote"].includes(loc))
-                      ? "bg-blue-50 border-blue-300 text-blue-700 font-semibold"
+                  key={hub}
+                  onClick={() => toggleLocation(hub)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all border shrink-0 ${
+                    isSelected
+                      ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
                       : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
                   }`}
                 >
-                  <span>{selectedLocations.length > 0 ? `${selectedLocations.length} Hubs` : "+ More"}</span>
-                  <ChevronDown className={`w-3 h-3 transition-transform ${locationDropdownOpen ? "rotate-180" : ""}`} />
+                  <span>{hub}</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-tabular ${isSelected ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"}`}>
+                    {count}
+                  </span>
                 </button>
+              );
+            })}
 
-                {locationDropdownOpen && (
-                  <div className="absolute left-0 z-30 mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden">
-                    <div className="p-2 border-b border-slate-100">
-                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
-                        <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <input
-                          type="text"
-                          value={locationSearch}
-                          onChange={(e) => setLocationSearch(e.target.value)}
-                          placeholder="Search locations..."
-                          className="bg-transparent text-slate-800 text-xs focus:outline-none flex-1 placeholder:text-slate-400"
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-52 overflow-y-auto py-1">
-                      {visibleLocations.length === 0 ? (
-                        <p className="px-3 py-3 text-xs text-slate-400 text-center">No locations found</p>
-                      ) : (
-                        visibleLocations.map((loc) => {
-                          const checked = selectedLocations.includes(loc);
-                          const count = locationCounts[loc] ?? 0;
-                          return (
-                            <button
-                              key={loc}
-                              type="button"
-                              onClick={() => toggleLocation(loc)}
-                              className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-50 transition-colors"
-                            >
-                              <span
-                                className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-colors ${
-                                  checked
-                                    ? "bg-blue-600 border-blue-600 text-white"
-                                    : "border-slate-300 bg-white text-transparent"
-                                }`}
-                              >
-                                <Check className="w-2.5 h-2.5" />
-                              </span>
-                              <span className="flex-1 text-xs text-slate-700 truncate">{loc}</span>
-                              <span className="text-[10px] text-slate-400 font-tabular">{count}</span>
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                    {selectedLocations.length > 0 && (
-                      <div className="p-1.5 border-t border-slate-100 text-center">
-                        <button
-                          type="button"
-                          onClick={clearLocations}
-                          className="w-full py-1 text-[11px] text-slate-500 hover:text-rose-600 transition-colors font-medium"
-                        >
-                          Reset Hubs Selection
-                        </button>
-                      </div>
-                    )}
+            {/* Location Dropdown Trigger */}
+            <div className="relative shrink-0" ref={locationDropdownRef}>
+              <button
+                onClick={() => setLocationDropdownOpen((prev) => !prev)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all border shrink-0 ${
+                  locationDropdownOpen || selectedLocations.some((loc) => !["Bengaluru", "Delhi NCR", "Hyderabad", "Pune", "Remote"].includes(loc))
+                    ? "bg-slate-100 border-slate-300 text-slate-900 font-semibold"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
+                }`}
+              >
+                <span>+ More</span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {locationDropdownOpen && (
+                <div className="absolute left-0 top-full mt-1.5 w-64 bg-white rounded-xl border border-slate-200 shadow-lg z-50 p-2 space-y-2">
+                  <input
+                    type="text"
+                    value={locationSearch}
+                    onChange={(e) => setLocationSearch(e.target.value)}
+                    placeholder="Filter cities..."
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-slate-400"
+                  />
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {visibleLocations.map((loc) => {
+                        const checked = selectedLocations.includes(loc);
+                        return (
+                          <button
+                            key={loc}
+                            onClick={() => toggleLocation(loc)}
+                            className="w-full flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-slate-50 text-left"
+                          >
+                            <span className={checked ? "font-bold text-slate-900" : "text-slate-600"}>{loc}</span>
+                            {checked && <Check className="w-3 h-3 text-slate-900" />}
+                          </button>
+                        );
+                      })}
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Filter Dropdown Bar: Role, Experience, Source, Sort, My Preferences, Dismiss */}
-            <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-100">
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="relative">
-                  <select
-                    value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value as "ALL" | "JOBS" | "INTERNSHIPS")}
-                    className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
-                  >
-                    <option value="ALL">Role: All ({counts.all})</option>
-                    <option value="JOBS">Full-Time ({counts.jobsCount})</option>
-                    <option value="INTERNSHIPS">Internships ({counts.internCount})</option>
-                  </select>
-                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
                 </div>
-
-                <div className="relative">
-                  <select
-                    value={experienceFilter}
-                    onChange={(e) => setExperienceFilter(e.target.value)}
-                    className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
-                  >
-                    <option value="ALL">Exp: Any</option>
-                    <option value="FRESHER">Fresher / 0y</option>
-                    <option value="0_1">0-1 Years</option>
-                    <option value="1_2">1-2 Years</option>
-                    <option value="2_3">2-3 Years</option>
-                    <option value="3_PLUS">3+ Years</option>
-                  </select>
-                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
-                </div>
-
-                <div className="relative">
-                  <select
-                    value={sourceFilter}
-                    onChange={(e) => setSourceFilter(e.target.value as "ALL" | "INTERNSHALA" | "NAUKRI" | "LINKEDIN")}
-                    className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
-                  >
-                    <option value="ALL">Source: All</option>
-                    <option value="LINKEDIN">LinkedIn</option>
-                    <option value="NAUKRI">Naukri</option>
-                    <option value="INTERNSHALA">Internshala</option>
-                  </select>
-                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
-                </div>
-
-                <div className="relative">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as "match" | "freshness")}
-                    className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
-                  >
-                    <option value="match">Sort: Match Fit</option>
-                    <option value="freshness">Sort: Freshness</option>
-                  </select>
-                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
-                </div>
-
-                <button
-                  onClick={handleApplyMyPreferences}
-                  disabled={applyingPrefs}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium transition-all disabled:opacity-50 shadow-xs shrink-0"
-                  title="Apply saved preferences"
-                >
-                  {applyingPrefs ? (
-                    <RefreshCw className="w-3 h-3 animate-spin text-blue-600" />
-                  ) : (
-                    <Sliders className="w-3 h-3 text-slate-500" />
-                  )}
-                  <span>My Preferences</span>
-                </button>
-              </div>
-
-              {filteredJobs.length > 0 && (
-                <button
-                  onClick={handleRejectAllOnPage}
-                  disabled={rejectingAll}
-                  className="flex items-center gap-1.5 text-xs text-rose-600 border border-rose-200 bg-rose-50/70 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition-all disabled:opacity-50 font-semibold shrink-0 ml-auto whitespace-nowrap"
-                  title="Dismiss all jobs on this page and load next"
-                >
-                  <Ban className="w-3.5 h-3.5" />
-                  <span>{rejectingAll ? "Dismissing..." : `Dismiss Page (${filteredJobs.length})`}</span>
-                </button>
               )}
             </div>
           </div>
 
+          {/* Secondary Filter Row & Actions */}
+          <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-slate-100">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as "ALL" | "JOBS" | "INTERNSHIPS")}
+                  className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
+                >
+                  <option value="ALL">Role: All ({counts.all})</option>
+                  <option value="JOBS">Full-Time ({counts.jobsCount})</option>
+                  <option value="INTERNSHIPS">Internships ({counts.internCount})</option>
+                </select>
+                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
+              </div>
 
-          {/* Result Count Bar */}
-          <div className="flex items-center justify-between text-xs text-slate-500 px-1">
-            <div>
-              Showing <strong className="text-slate-900 font-tabular font-bold">{filteredJobs.length}</strong> of{" "}
-              <strong className="text-slate-900 font-tabular font-bold">{totalCount > 0 ? totalCount : jobs.length}</strong>
-              {totalCount > pageSize && (
-                <span className="text-slate-400 ml-1.5">(Page {currentPage} of {Math.ceil(totalCount / pageSize)})</span>
-              )}
+              <div className="relative">
+                <select
+                  value={experienceFilter}
+                  onChange={(e) => setExperienceFilter(e.target.value)}
+                  className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
+                >
+                  <option value="ALL">Exp: Any</option>
+                  <option value="FRESHER">Fresher / 0y</option>
+                  <option value="0_1">0-1 Years</option>
+                  <option value="1_2">1-2 Years</option>
+                  <option value="2_3">2-3 Years</option>
+                  <option value="3_PLUS">3+ Years</option>
+                </select>
+                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
+              </div>
+
+              <div className="relative">
+                <select
+                  value={sourceFilter}
+                  onChange={(e) => setSourceFilter(e.target.value as "ALL" | "INTERNSHALA" | "NAUKRI" | "LINKEDIN")}
+                  className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
+                >
+                  <option value="ALL">Source: All</option>
+                  <option value="LINKEDIN">LinkedIn</option>
+                  <option value="NAUKRI">Naukri</option>
+                  <option value="INTERNSHALA">Internshala</option>
+                </select>
+                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
+              </div>
+
+              <div className="relative">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as "match" | "freshness")}
+                  className="appearance-none bg-white text-slate-700 font-medium border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs focus:outline-none hover:border-slate-300 transition-colors cursor-pointer shadow-xs"
+                >
+                  <option value="match">Sort: Match Fit</option>
+                  <option value="freshness">Sort: Freshness</option>
+                </select>
+                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2.5 pointer-events-none" />
+              </div>
+
+              <button
+                onClick={handleApplyMyPreferences}
+                disabled={applyingPrefs}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium transition-all disabled:opacity-50 shadow-xs shrink-0"
+                title="Apply saved preferences"
+              >
+                {applyingPrefs ? (
+                  <RefreshCw className="w-3 h-3 animate-spin text-slate-700" />
+                ) : (
+                  <Sliders className="w-3 h-3 text-slate-500" />
+                )}
+                <span>My Preferences</span>
+              </button>
             </div>
 
-            {hasActiveFilters && (
+            {filteredJobs.length > 0 && (
               <button
-                onClick={resetAllFilters}
-                className="flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors font-medium"
+                onClick={handleRejectAllOnPage}
+                disabled={rejectingAll}
+                className="flex items-center gap-1.5 text-xs text-rose-600 border border-rose-200 bg-rose-50/60 hover:bg-rose-100/80 px-3 py-1.5 rounded-xl transition-all disabled:opacity-50 font-semibold shrink-0 ml-auto whitespace-nowrap shadow-xs"
+                title="Dismiss all jobs on this page and load next"
               >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset Filters</span>
+                <Ban className="w-3.5 h-3.5" />
+                <span>{rejectingAll ? "Dismissing..." : `Dismiss Page (${filteredJobs.length})`}</span>
               </button>
             )}
           </div>
+        </div>
 
-          {/* Job Listings: Clean modern white cards */}
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="rounded-2xl border border-slate-200/80 bg-white p-5 animate-pulse space-y-3 shadow-card-subtle">
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100 shrink-0" />
-                    <div className="space-y-2 flex-1">
-                      <div className="h-4 bg-slate-100 rounded w-1/3" />
-                      <div className="h-3 bg-slate-50 rounded w-1/2" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : filteredJobs.length > 0 ? (
-            <div className="space-y-3.5">
-              {filteredJobs.map((job, idx) => {
-                const match = job.match;
-                const monogram = getMonogram(job.company);
-                const isActive = activeCardIndex === idx;
+        {/* Result Count Bar */}
+        <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+          <div>
+            Showing <strong className="text-slate-900 font-tabular font-bold">{filteredJobs.length}</strong> of{" "}
+            <strong className="text-slate-900 font-tabular font-bold">{totalCount > 0 ? totalCount : jobs.length}</strong>
+            {totalCount > pageSize && (
+              <span className="text-slate-400 ml-1.5">(Page {currentPage} of {Math.ceil(totalCount / pageSize)})</span>
+            )}
+          </div>
 
-                return (
-                  <div
-                    key={job.id}
-                    onClick={() => {
-                      setActiveCardIndex(idx);
-                      setSelectedJobId(job.id);
-                      setDetailDrawerOpen(true);
-                    }}
-                    className={`group relative rounded-2xl border bg-white p-5 hover:border-slate-300 hover:shadow-card-hover transition-all duration-200 cursor-pointer ${
-                      isActive ? "border-emerald-500/80 ring-2 ring-emerald-500/20" : "border-slate-200/80"
-                    }`}
-                  >
-                    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                      {/* Left: Company Logo/Avatar + Main Details */}
-                      <div className="flex items-start gap-4 min-w-0 flex-1">
-                        {/* Company Logo Monogram Container */}
-                        <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-center font-bold text-sm text-slate-700 shrink-0 shadow-xs group-hover:scale-105 transition-transform overflow-hidden relative">
-                          {job.company_logo_url ? (
-                            <img
-                              src={job.company_logo_url}
-                              alt={job.company}
-                              className="w-full h-full object-contain p-1"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLElement).style.display = "none";
-                                const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                                if (fallback) fallback.style.display = "flex";
-                              }}
-                            />
-                          ) : null}
-                          <span
-                            className="items-center justify-center w-full h-full"
-                            style={{ display: job.company_logo_url ? "none" : "flex" }}
-                          >
-                            {monogram}
-                          </span>
-                        </div>
-
-                        <div className="min-w-0 flex-1 space-y-2">
-                          {/* Row 1: Company Name + Source Badge + Match Badge + QS Badge + Time */}
-                          <div className="flex items-center gap-2 flex-wrap text-xs">
-                            <span className="text-slate-900 font-bold text-sm tracking-tight">{job.company}</span>
-
-                            {/* Source icon badge */}
-                            <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-300 font-bold text-[11px] uppercase">
-                              {job.source}
-                            </span>
-
-                            {match && (
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${getBadgeStyle(match.recommendation)}`}>
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                                <span className="font-tabular">{match.overall_score}%</span>
-                                <span>{match.recommendation.replace("_", " ")}</span>
-                              </span>
-                            )}
-
-                            {job.quality_score !== undefined && job.quality_score > 0 && (
-                              <span className="px-2 py-0.5 rounded-md text-xs font-semibold font-tabular bg-slate-100 text-slate-800 border border-slate-300">
-                                QS {Math.round(job.quality_score)}%
-                              </span>
-                            )}
-
-                            <span className="text-slate-500 font-tabular text-xs font-medium ml-1">
-                              {job.age_hours !== null ? `${job.age_hours}h ago` : "Just now"}
-                            </span>
-                          </div>
-
-                          {/* Row 2: Job Title (Large & Bold) */}
-                          <h2
-                            onClick={() => {
-                              setSelectedJobId(job.id);
-                              setDetailDrawerOpen(true);
-                            }}
-                            className="text-lg sm:text-xl font-bold text-slate-900 group-hover:text-emerald-700 transition-colors cursor-pointer leading-snug tracking-tight"
-                          >
-                            {job.title}
-                          </h2>
-
-                          {/* Row 3: Metadata (Location, Exp, Comp) */}
-                          <div className="flex items-center gap-3 text-xs sm:text-[13px] text-slate-600 flex-wrap pt-0.5 font-normal">
-                            <div className="flex items-center gap-1.5 text-slate-800 font-medium">
-                              <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                              <span>{job.location}</span>
-                              <span className="text-slate-500 uppercase text-[11px] font-semibold">({job.remote_type})</span>
-                            </div>
-
-                            <span className="text-slate-300">·</span>
-                            <div className="flex items-center gap-1.5">
-                              <Briefcase className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                              <span>Exp: <strong className="text-slate-900 font-semibold">{job.experience}</strong></span>
-                            </div>
-
-                            <span className="text-slate-300">·</span>
-                            <div className="flex items-center gap-1">
-                              <span className="text-slate-500">Comp:</span>
-                              <strong className={job.salary ? "text-emerald-800 font-bold" : "text-slate-600 font-medium"}>
-                                {job.salary || "Not disclosed"}
-                              </strong>
-                            </div>
-                          </div>
-
-                          {/* Row 4: Skill Tags */}
-                          {job.required_skills && job.required_skills.length > 0 && (
-                            <div className="flex items-center gap-1.5 flex-wrap pt-1.5">
-                              {job.required_skills.slice(0, 5).map((s) => (
-                                <span
-                                  key={s}
-                                  className="text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-800 border border-slate-300"
-                                >
-                                  {s}
-                                </span>
-                              ))}
-                              {job.required_skills.length > 5 && (
-                                <span className="text-xs text-slate-500 font-medium ml-1">
-                                  +{job.required_skills.length - 5} more
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right: Distilled Actions Toolbar (Save, Apply, Overflow) */}
-                      <div className="flex items-center gap-2 shrink-0 self-start lg:self-center pt-2 lg:pt-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSave(job);
-                          }}
-                          aria-label={`Save ${job.title} to pipeline`}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all shadow-xs active:scale-[0.98] bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300"
-                          title="Save to pipeline"
-                        >
-                          <Bookmark className="w-3.5 h-3.5" />
-                          <span>Save</span>
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleReject(job);
-                          }}
-                          aria-label={`Dismiss ${job.title} at ${job.company}`}
-                          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-rose-50/80 text-slate-500 hover:text-rose-700 hover:border-rose-200 transition-colors shadow-xs"
-                          title="Dismiss job"
-                        >
-                          <ThumbsDown className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleBanCompany(job.company);
-                          }}
-                          aria-label={`Ban ${job.company} from all future results`}
-                          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-rose-50/80 text-slate-500 hover:text-rose-700 hover:border-rose-200 transition-colors shadow-xs"
-                          title={`Ban ${job.company}`}
-                        >
-                          <Ban className="w-3.5 h-3.5" />
-                        </button>
-
-                        <a
-                          href={job.application_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-all shadow-xs active:scale-[0.98]"
-                        >
-                          <span>Apply</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Unified pagination inside bottom white container */}
-              <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-card-subtle">
-                {renderPaginationControls()}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-12 text-center bg-white space-y-3 shadow-card-subtle">
-              <Briefcase className="w-8 h-8 text-slate-400 mx-auto" />
-              <p className="text-base font-semibold text-slate-800">
-                {totalCount > 0 ? "No signals matching active filter parameters on this page" : "No radar signals detected matching your filters"}
-              </p>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                {totalCount > 0
-                  ? "Check other page indices, adjust hub filters, or trigger a feed sync."
-                  : "Widen your freshness window, reset excluded companies, or sync fresh radar feeds."}
-              </p>
-              <div className="flex items-center justify-center gap-2 pt-2">
-                {hasActiveFilters && (
-                  <button
-                    onClick={resetAllFilters}
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition-colors"
-                  >
-                    Reset All Filters
-                  </button>
-                )}
-                <Link
-                  href="/preferences"
-                  className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-semibold transition-colors border border-blue-200/60"
-                >
-                  Configure Radar Settings
-                </Link>
-              </div>
-            </div>
+          {hasActiveFilters && (
+            <button
+              onClick={resetAllFilters}
+              className="flex items-center gap-1 text-slate-500 hover:text-slate-900 transition-colors font-medium"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Filters</span>
+            </button>
           )}
         </div>
 
-        {/* Right Column: Widgets Rail matching reference screenshot */}
-        <div className="xl:col-span-4 2xl:col-span-3 space-y-5">
-          {/* Widget 1: Tracking Opportunities Sparkline Card */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card-subtle space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
-                <TrendingUp className="w-4 h-4" />
+        {/* Job Listings: Clean modern white cards */}
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="rounded-2xl border border-slate-200/90 bg-white p-5 animate-pulse space-y-3 shadow-sm">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-xl bg-slate-100 shrink-0" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 bg-slate-100 rounded w-1/3" />
+                    <div className="h-3 bg-slate-50 rounded w-1/2" />
+                  </div>
+                </div>
               </div>
-              <div>
-                <h3 className="text-xs font-bold text-slate-900">Tracking Opportunities</h3>
-                <p className="text-[11px] text-slate-400 font-medium">120 new roles in the last 24h</p>
-              </div>
-            </div>
-
-            {/* Real telemetry ratio bar */}
-            <div className="py-2 space-y-2">
-              <div className="flex items-center justify-between text-xs font-semibold">
-                <span className="text-slate-600">Active Pipeline</span>
-                <span className="text-emerald-700 font-tabular font-bold">
-                  {counts.all > 0 ? `${Math.min(100, Math.round((counts.strong / counts.all) * 100))}% High Match` : "Live Feed"}
-                </span>
-              </div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                <div
-                  className="bg-emerald-500 h-full transition-all"
-                  style={{ width: `${counts.all > 0 ? (counts.strong / counts.all) * 100 : 40}%` }}
-                  title="Strong Match"
-                />
-                <div
-                  className="bg-teal-400 h-full transition-all"
-                  style={{ width: `${counts.all > 0 ? (counts.good / counts.all) * 100 : 35}%` }}
-                  title="Good Match"
-                />
-                <div
-                  className="bg-amber-400 h-full transition-all"
-                  style={{ width: `${counts.all > 0 ? (counts.consider / counts.all) * 100 : 25}%` }}
-                  title="Consider"
-                />
-              </div>
-            </div>
-
-            {/* 4-Stat breakdown columns */}
-            <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-center">
-              <div>
-                <p className="text-base font-extrabold text-slate-900 font-tabular">{counts.all}</p>
-                <p className="text-[10px] font-medium text-slate-400">Total</p>
-              </div>
-              <div>
-                <p className="text-base font-extrabold text-slate-900 font-tabular">{locationCounts["Bengaluru"] ?? 38}</p>
-                <p className="text-[10px] font-medium text-slate-400">Bengaluru</p>
-              </div>
-              <div>
-                <p className="text-base font-extrabold text-slate-900 font-tabular">{locationCounts["Delhi NCR"] ?? 10}</p>
-                <p className="text-[10px] font-medium text-slate-400">Delhi NCR</p>
-              </div>
-              <div>
-                <p className="text-base font-extrabold text-slate-900 font-tabular">
-                  {Math.max(0, counts.all - (locationCounts["Bengaluru"] ?? 38) - (locationCounts["Delhi NCR"] ?? 10))}
-                </p>
-                <p className="text-[10px] font-medium text-slate-400">Others</p>
-              </div>
-            </div>
+            ))}
           </div>
+        ) : filteredJobs.length > 0 ? (
+          <div className="space-y-3.5">
+            {filteredJobs.map((job, idx) => {
+              const match = job.match;
+              const monogram = getMonogram(job.company);
+              const isActive = activeCardIndex === idx;
 
-          {/* Widget 2: Quick Filters Checkbox List */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card-subtle space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-blue-600" />
-                <h3 className="text-xs font-bold text-slate-900">Quick Filters</h3>
-              </div>
-              <button
-                onClick={() => setQuickRoleFilter("ALL")}
-                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 transition-colors"
-              >
-                Reset
-              </button>
-            </div>
-
-            {/* Checkbox Rows */}
-            <div className="space-y-2 pt-1">
-              {[
-                { id: "ALL", label: "All Roles", count: counts.all },
-                { id: "SOFTWARE_ENGINEER", label: "Software Engineer", count: Math.round(counts.all * 0.35) },
-                { id: "FULL_STACK", label: "Full Stack", count: Math.round(counts.all * 0.23) },
-                { id: "BACKEND", label: "Backend", count: Math.round(counts.all * 0.2) },
-                { id: "FRONTEND", label: "Frontend", count: Math.round(counts.all * 0.1) },
-                { id: "DEVOPS", label: "DevOps", count: Math.round(counts.all * 0.07) },
-                { id: "DATA_AI", label: "Data / AI", count: Math.round(counts.all * 0.05) },
-                { id: "REMOTE_ONLY", label: "Remote Only", count: locationCounts["Remote"] ?? 4 },
-              ].map((item) => {
-                const active = quickRoleFilter === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setQuickRoleFilter(item.id)}
-                    className="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded-lg hover:bg-slate-50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={`w-4 h-4 rounded flex items-center justify-center border transition-all ${
-                          active
-                            ? "bg-blue-600 border-blue-600 text-white"
-                            : "border-slate-300 group-hover:border-slate-400 bg-white"
-                        }`}
-                      >
-                        {active && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+              return (
+                <div
+                  key={job.id}
+                  onClick={() => {
+                    setActiveCardIndex(idx);
+                    setSelectedJobId(job.id);
+                    setDetailDrawerOpen(true);
+                  }}
+                  className={`group relative rounded-2xl border bg-white p-5 hover:border-slate-300 hover:shadow-md transition-all duration-200 cursor-pointer ${
+                    isActive ? "border-slate-900 ring-1 ring-slate-900/10" : "border-slate-200/90 shadow-sm"
+                  }`}
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                    {/* Left: Company Logo/Avatar + Main Details */}
+                    <div className="flex items-start gap-4 min-w-0 flex-1">
+                      {/* Company Logo Monogram Container */}
+                      <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200/90 flex items-center justify-center font-bold text-sm text-slate-700 shrink-0 shadow-xs group-hover:border-slate-300 transition-all overflow-hidden relative">
+                        {job.company_logo_url ? (
+                          <img
+                            src={job.company_logo_url}
+                            alt={job.company}
+                            className="w-full h-full object-contain p-1"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLElement).style.display = "none";
+                              const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = "flex";
+                            }}
+                          />
+                        ) : null}
+                        <span
+                          className="items-center justify-center w-full h-full"
+                          style={{ display: job.company_logo_url ? "none" : "flex" }}
+                        >
+                          {monogram}
+                        </span>
                       </div>
-                      <span className={`font-medium ${active ? "text-slate-900 font-semibold" : "text-slate-600"}`}>
-                        {item.label}
-                      </span>
+
+                      <div className="min-w-0 flex-1 space-y-2">
+                        {/* Row 1: Company Name + Source Badge + Match Badge + QS Badge + Time */}
+                        <div className="flex items-center gap-2 flex-wrap text-xs">
+                          <span className="text-slate-900 font-bold text-sm tracking-tight">{job.company}</span>
+
+                          {/* Source icon badge */}
+                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-semibold text-[10px] tracking-wide uppercase">
+                            {job.source}
+                          </span>
+
+                          {match && (
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getBadgeStyle(match.recommendation)}`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                              <span className="font-tabular">{match.overall_score}%</span>
+                              <span>{match.recommendation.replace("_", " ")}</span>
+                            </span>
+                          )}
+
+                          {job.quality_score !== undefined && job.quality_score > 0 && (
+                            <span className="px-2 py-0.5 rounded-md text-xs font-medium font-tabular bg-slate-50 text-slate-600 border border-slate-200">
+                              QS {Math.round(job.quality_score)}%
+                            </span>
+                          )}
+
+                          <span className="text-slate-400 font-tabular text-xs font-normal ml-auto lg:ml-1">
+                            {job.age_hours !== null ? `${job.age_hours}h ago` : "Just now"}
+                          </span>
+                        </div>
+
+                        {/* Row 2: Job Title (Large & Bold) */}
+                        <h2
+                          onClick={() => {
+                            setSelectedJobId(job.id);
+                            setDetailDrawerOpen(true);
+                          }}
+                          className="text-lg sm:text-xl font-bold text-slate-900 group-hover:text-blue-600 transition-colors cursor-pointer leading-snug tracking-tight"
+                        >
+                          {job.title}
+                        </h2>
+
+                        {/* Row 3: Metadata (Location, Exp, Comp) */}
+                        <div className="flex items-center gap-3 text-xs sm:text-[13px] text-slate-600 flex-wrap pt-0.5 font-normal">
+                          <div className="flex items-center gap-1.5 text-slate-800 font-medium">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>{job.location}</span>
+                            <span className="text-slate-500 uppercase text-[11px] font-semibold">({job.remote_type})</span>
+                          </div>
+
+                          <span className="text-slate-300">·</span>
+                          <div className="flex items-center gap-1.5">
+                            <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>Exp: <strong className="text-slate-900 font-semibold">{job.experience}</strong></span>
+                          </div>
+
+                          <span className="text-slate-300">·</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-slate-500">Comp:</span>
+                            <strong className={job.salary ? "text-slate-900 font-semibold" : "text-slate-500 font-normal"}>
+                              {job.salary || "Not disclosed"}
+                            </strong>
+                          </div>
+                        </div>
+
+                        {/* Row 4: Skill Tags */}
+                        {job.required_skills && job.required_skills.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                            {job.required_skills.slice(0, 5).map((s) => (
+                              <span
+                                key={s}
+                                className="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-50 text-slate-700 border border-slate-200/80"
+                              >
+                                {s}
+                              </span>
+                            ))}
+                            {job.required_skills.length > 5 && (
+                              <span className="text-xs text-slate-400 font-medium ml-1">
+                                +{job.required_skills.length - 5} more
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-[11px] font-tabular text-slate-400 group-hover:text-slate-600">
-                      {item.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
 
-          {/* Widget 3: Stay ahead with AI promo pod matching screenshot */}
-          <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/60 via-teal-50/30 to-white p-5 shadow-card-subtle space-y-2">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-xs shrink-0 mt-0.5">
-                <Zap className="w-4 h-4 fill-current" />
-              </div>
-              <div className="space-y-1">
-                <h4 className="text-xs font-bold text-slate-900">Stay ahead with AI</h4>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  We scan multiple sources 24/7 to bring you the best opportunities.
-                </p>
-              </div>
+                    {/* Right: Clean Actions Toolbar */}
+                    <div className="flex items-center gap-2 shrink-0 self-start lg:self-center pt-2 lg:pt-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSave(job);
+                        }}
+                        aria-label={`Save ${job.title} to pipeline`}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all shadow-xs active:scale-[0.98] bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300"
+                        title="Save to pipeline"
+                      >
+                        <Bookmark className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Save</span>
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReject(job);
+                        }}
+                        aria-label={`Dismiss ${job.title} at ${job.company}`}
+                        className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-colors shadow-xs"
+                        title="Dismiss job"
+                      >
+                        <ThumbsDown className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleBanCompany(job.company);
+                        }}
+                        aria-label={`Ban ${job.company} from all future results`}
+                        className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-colors shadow-xs"
+                        title={`Ban ${job.company}`}
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                      </button>
+
+                      <a
+                        href={job.application_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all shadow-xs active:scale-[0.98]"
+                      >
+                        <span>Apply</span>
+                        <ExternalLink className="w-3 h-3 text-slate-300" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Unified pagination inside bottom white container */}
+            <div className="p-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm">
+              {renderPaginationControls()}
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 p-12 text-center bg-white space-y-3 shadow-sm">
+            <Briefcase className="w-8 h-8 text-slate-400 mx-auto" />
+            <p className="text-base font-semibold text-slate-800">
+              {totalCount > 0 ? "No signals matching active filter parameters on this page" : "No radar signals detected matching your filters"}
+            </p>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              {totalCount > 0
+                ? "Check other page indices, adjust hub filters, or trigger a feed sync."
+                : "Widen your freshness window, reset excluded companies, or sync fresh radar feeds."}
+            </p>
+            <div className="flex items-center justify-center gap-2 pt-2">
+              {hasActiveFilters && (
+                <button
+                  onClick={resetAllFilters}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Reset All Filters
+                </button>
+              )}
+              <Link
+                href="/preferences"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition-colors border border-slate-200"
+              >
+                Configure Radar Settings
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
-
 
       {/* Sync Telemetry Modal */}
       <SyncProgressModal
         isOpen={syncModalOpen}
         onClose={() => {
           setSyncModalOpen(false);
-          setSyncing(false);
-          setSyncJobId(null);
+          // Don't reset syncJobId so user can re-open modal via "View Progress"
         }}
         jobId={syncJobId}
         source={syncSource}
+        onCancelSync={() => {
+          setSyncing(false);
+          setSyncNotification({
+            type: "error",
+            message: "Sync was stopped by user.",
+          });
+        }}
         onSyncComplete={(summary) => {
           fetchJobs(1);
           setSyncing(false);
@@ -1722,6 +1561,11 @@ export default function JobsPage() {
               setSyncNotification({
                 type: "success",
                 message: `Sync completed: ${summary.total_discovered ?? 0} discovered, ${summary.canonical_saved ?? 0} added via ${srcNames}.`,
+              });
+            } else if (summary.status === "cancelled") {
+              setSyncNotification({
+                type: "error",
+                message: "Sync stopped by user.",
               });
             } else if (summary.status === "failed" || summary.status === "blocked") {
               setSyncNotification({

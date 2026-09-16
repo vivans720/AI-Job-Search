@@ -245,7 +245,7 @@ class LinkedInAdapter(JobSource):
         if freshness_h <= 1 and roles_to_include:
             roles_to_include = roles_to_include[:2]
         elif freshness_h <= 4 and roles_to_include:
-            roles_to_include = roles_to_include[:2]
+            roles_to_include = roles_to_include[:3]
 
         for r in roles_to_include:
             clean_r = r.strip()
@@ -309,14 +309,22 @@ class LinkedInAdapter(JobSource):
         self._metrics.requests_count += 1
 
         try:
+            # Inject dynamic guest session cookies
+            from app.crawling.guest_session_manager import get_guest_session_manager
+            guest_mgr = get_guest_session_manager("linkedin")
+            guest_cookies = await guest_mgr.get_valid_cookies()
+            headers = dict(GUEST_HEADERS)
+            if guest_cookies:
+                headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in guest_cookies.items())
+
             result = await resilient_fetch(
                 target_url,
-                headers=GUEST_HEADERS,
+                headers=headers,
                 timeout=self.timeout,
                 max_retries=self.max_retries,
                 caller_tag="linkedin_adapter",
-                enable_tor_fallback=True,
             )
+            self._metrics.requests_count += 1
             self._metrics.retries_count += getattr(result, "attempt_count", 1) - 1
         except Exception as exc:
             classified = classify_error(exc, self.source_name)
@@ -326,6 +334,7 @@ class LinkedInAdapter(JobSource):
             self._metrics.status = self.status
             self._metrics.last_error = self.last_error
             self._metrics.last_error_category = self.last_error_category
+            limiter.mark_blocked(attempt=1, base_seconds=15.0)
             logger.warning("linkedin_fetch_exception", error=str(exc), category=classified.category.value)
             return None
 
@@ -336,6 +345,7 @@ class LinkedInAdapter(JobSource):
 
         # Explicit fallback if client received 429 / 403 and did not recover
         if result.status_code in (403, 429) or result.is_blocked or result.is_rate_limited:
+            limiter.mark_blocked(attempt=2, base_seconds=20.0)
             self.status = "blocked"
             self.last_error = f"HTTP {result.status_code} - rate limited / blocked"
             self.last_error_category = "rate_limit_block"
@@ -620,7 +630,7 @@ class LinkedInAdapter(JobSource):
         3. Fallback Path: Headless Playwright persistent browser with stealth camo.
         
         Optimized with:
-        - Freshness-aware query and page offsets (1h uses 1 page, 24h uses up to 3 pages).
+        - Freshness-aware query and page offsets (1h uses 1 page, 4h uses up to 3 pages, 24h uses up to 5 pages).
         - Global per-sync hydration budget (replaces aggressive per-query hydration).
         - Browser fallback attempt budget and circuit breaker.
         - Early stopping on empty pages or when target limit reached.
@@ -628,7 +638,7 @@ class LinkedInAdapter(JobSource):
         """
         queries = self._determine_search_queries(query)
         location = query.locations[0] if query.locations else "India"
-        limit = query.limit or 50
+        limit = query.limit or getattr(settings, "SYNC_DEFAULT_JOB_LIMIT", 100)
         freshness_h = query.freshness_hours or 24
         self._freshness_hours = freshness_h
 
@@ -640,13 +650,13 @@ class LinkedInAdapter(JobSource):
         f_tpr_seconds = freshness_h * 3600
         f_tpr = f"r{f_tpr_seconds}"
 
-        # Freshness-aware pagination offsets: start at 0, only check 25 if first page yields high count
+        # Freshness-aware pagination offsets
         if freshness_h <= 1:
             offsets = [0]
         elif freshness_h <= 4:
-            offsets = [0, 25]
-        else:
             offsets = [0, 25, 50]
+        else:
+            offsets = [0, 25, 50, 75, 100]
 
         # Global per-sync hydration budget:
         # For <= 4h, skip synchronous detail hydration during sync loop.

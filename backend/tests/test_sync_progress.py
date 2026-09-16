@@ -56,3 +56,49 @@ async def test_source_schedule_api_endpoint():
             data = res.json()
             assert data["auto_sync_enabled"] is True
             assert data["sync_interval_hours"] == 12
+
+
+@pytest.mark.asyncio
+async def test_queue_service_cancellation():
+    mock_redis = AsyncMock()
+    stored_data = {}
+
+    async def mock_set(key, val, ex=None):
+        stored_data[key] = val
+
+    async def mock_get(key):
+        return stored_data.get(key)
+
+    mock_redis.set.side_effect = mock_set
+    mock_redis.get.side_effect = mock_get
+
+    with patch("app.services.queue_service.get_redis", return_value=mock_redis):
+        qs = QueueService()
+        job_id = "test-job-cancel-1"
+
+        assert not await qs.is_job_cancelled(job_id)
+        ok = await qs.cancel_job(job_id)
+        assert ok is True
+        assert await qs.is_job_cancelled(job_id)
+
+        status = await qs.get_job_status(job_id)
+        assert status is not None
+        assert status["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_cancel_job_sync_api_endpoint():
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+
+    with patch("app.services.queue_service.task_queue.get_job_status", new_callable=AsyncMock) as mock_status, \
+         patch("app.services.queue_service.task_queue.cancel_job", new_callable=AsyncMock) as mock_cancel:
+        mock_status.return_value = {"job_id": "test-job-123", "status": "running"}
+        mock_cancel.return_value = True
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            res = await ac.post("/api/v1/jobs/sync/cancel/test-job-123")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["status"] == "cancelled"
+            assert data["job_id"] == "test-job-123"

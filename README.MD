@@ -105,12 +105,22 @@ Scoring prioritizes proven technical capability over inflated job titles or unca
   - `get_saved_jobs` & `get_search_history`: Audit active progress and query logs.
 - **Manual Application Integrity**: Updates application state (`DISCOVERED`, `SAVED`, `VIEWED`, `APPLIED`, `INTERVIEW`, `REJECTED`, `OFFER`); strictly prohibits automated unauthorized applications.
 
-### 7. Modern Next.js 15 Dashboard
+### 7. Company Logo Enrichment & Ingestion Pipeline
+- **Adapter Ingestion**: Scrapers extract verified company logos directly from LinkedIn (`img.artdeco-entity-image`), Internshala (`.company_logo img`), and Naukri (`logoPath` in `__NEXT_DATA__` JSON or `.comp-logo img`).
+- **Database & Schemas**: Dedicated `company_logo_url` and `logo_url` columns on jobs and companies tables with database migrations.
+- **Resilient Fallback**: Discovery feed and detail drawers render company logos with clean fallback to company initials monogram when image assets are missing or fail to load.
+
+### 8. Company Autosuggest & Multi-Add Preferences
+- **Autosuggest Endpoint**: `GET /api/v1/companies/suggest?q=...&limit=8` delivers real-time case-insensitive prefix search against ingested employer entities.
+- **Interactive Multi-Entry**: Fast pill suggestions, interactive tags, and comma/newline batch pasting for excluded companies, priority companies, and locations.
+
+### 9. Modern Next.js 15 Dashboard & Design System
 - Built with Next.js 15.1 (App Router), React 19, TypeScript, and Tailwind CSS.
-- **Discovery Radar (`/jobs`)**: Filterable feed with discrete freshness pills, role selectors, location tags, and real-time match breakdown modals.
-- **Pipeline Tracker (`/saved`)**: Status-driven board managing application lifecycle stages.
-- **Profile & Resume (`/profile`, `/resume`)**: PDF resume parser and skill profile editor.
-- **Preferences (`/preferences`)**: Fine-grained configuration for target roles, excluded companies, and scoring thresholds.
+- **Design System Primitives**: Standardized atomic UI components in `@/components/ui` (`Button`, `Badge`, `Card`, `Input`, `Tabs`, `PageHeader`) using a unified Light SaaS palette (`#f8f9fc` canvas, `#ffffff` cards, `#059669` emerald telemetry, hairline borders).
+- **Discovery Radar (`/jobs`)**: Filterable feed with discrete freshness pills, role selectors, location tags, telemetry distribution bar, keyboard navigation (`J`/`K`/`Enter`/`S`/`X`), and real-time match breakdown modals.
+- **Pipeline Tracker (`/saved`)**: Status-driven board managing application lifecycle stages with tabular counters.
+- **Profile & Resume (`/profile`)**: Consolidated resume intelligence center featuring PDF resume parser, SHA256 verification, extracted skill overview, and candidate profile editor (`/resume` redirects cleanly).
+- **Preferences (`/preferences`)**: Fine-grained configuration for target roles, autosuggested priority/excluded companies, and scoring thresholds.
 - **AI Diagnostics (`/ai-provider`)**: Real-time provider switcher, latency ping tests, and capability inspection.
 
 ---
@@ -153,7 +163,12 @@ Scoring prioritizes proven technical capability over inflated job titles or unca
 │   ├── Dockerfile              # Production backend container definition
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/
-│   ├── src/app/                # Next.js App Router pages (jobs, saved, profile, ai-provider)
+│   ├── src/
+│   │   ├── app/                # Next.js App Router pages (jobs, saved, profile, ai-provider)
+│   │   ├── components/
+│   │   │   ├── ui/             # Reusable design system primitives (Button, Badge, Card, Input, Tabs, PageHeader)
+│   │   │   └── jobs/           # Discovery radar components & drawers
+│   │   └── lib/                # API clients, types, and company autosuggest helpers
 │   ├── public/                 # Static assets
 │   ├── Dockerfile              # Frontend container definition
 │   └── package.json            # Node dependencies
