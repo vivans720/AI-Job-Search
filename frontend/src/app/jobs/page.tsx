@@ -1153,17 +1153,30 @@ export default function JobsPage() {
 
             {/* Location Dropdown Trigger */}
             <div className="relative shrink-0" ref={locationDropdownRef}>
-              <button
-                onClick={() => setLocationDropdownOpen((prev) => !prev)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all border shrink-0 ${
-                  locationDropdownOpen || selectedLocations.some((loc) => !["Bengaluru", "Delhi NCR", "Hyderabad", "Pune", "Remote"].includes(loc))
-                    ? "bg-slate-100 border-slate-300 text-slate-900 font-semibold"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
-                }`}
-              >
-                <span>+ More</span>
-                <ChevronDown className="w-3 h-3 text-slate-400" />
-              </button>
+              {(() => {
+                const extraSelectedCount = selectedLocations.filter(
+                  (loc) => !["Bengaluru", "Delhi NCR", "Hyderabad", "Pune", "Remote"].includes(loc)
+                ).length;
+                const isExtraActive = locationDropdownOpen || extraSelectedCount > 0;
+                return (
+                  <button
+                    onClick={() => setLocationDropdownOpen((prev) => !prev)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all border shrink-0 ${
+                      isExtraActive
+                        ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>+ More</span>
+                    {extraSelectedCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] font-tabular bg-slate-800 text-slate-200">
+                        {extraSelectedCount}
+                      </span>
+                    )}
+                    <ChevronDown className={`w-3 h-3 ${isExtraActive ? "text-slate-300" : "text-slate-400"}`} />
+                  </button>
+                );
+              })()}
 
               {locationDropdownOpen && (
                 <div className="absolute left-0 top-full mt-1.5 w-64 bg-white rounded-xl border border-slate-200 shadow-lg z-50 p-2 space-y-2">
@@ -1282,12 +1295,20 @@ export default function JobsPage() {
         </div>
 
         {/* Result Count Bar */}
-        <div className="flex items-center justify-between text-xs text-slate-500 px-1">
-          <div>
-            Showing <strong className="text-slate-900 font-tabular font-bold">{filteredJobs.length}</strong> of{" "}
-            <strong className="text-slate-900 font-tabular font-bold">{totalCount > 0 ? totalCount : jobs.length}</strong>
-            {totalCount > pageSize && (
-              <span className="text-slate-400 ml-1.5">(Page {currentPage} of {Math.ceil(totalCount / pageSize)})</span>
+        <div className="flex items-center justify-between text-xs text-slate-500 px-1 flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div>
+              Showing <strong className="text-slate-900 font-tabular font-bold">{filteredJobs.length}</strong> of{" "}
+              <strong className="text-slate-900 font-tabular font-bold">{totalCount > 0 ? totalCount : jobs.length}</strong>
+              {totalCount > pageSize && (
+                <span className="text-slate-400 ml-1.5">(Page {currentPage} of {Math.ceil(totalCount / pageSize)})</span>
+              )}
+            </div>
+
+            {excludedCompanies.length > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600 border border-slate-200">
+                <span>{excludedCompanies.length} companies excluded</span>
+              </span>
             )}
           </div>
 
@@ -1458,6 +1479,18 @@ export default function JobsPage() {
                       >
                         <Bookmark className="w-3.5 h-3.5 text-slate-500" />
                         <span>Save</span>
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMarkApplied(job);
+                        }}
+                        aria-label={`Mark ${job.title} as applied`}
+                        className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-colors shadow-xs"
+                        title="Mark as applied"
+                      >
+                        <Check className="w-3.5 h-3.5" />
                       </button>
 
                       <button

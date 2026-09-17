@@ -56,6 +56,7 @@ async def search_jobs_db(
     exclude_unpaid: bool = False,
     exclude_user_id: uuid.UUID | None = None,
     exclude_statuses: list[str] | None = None,
+    excluded_companies: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Search database for fresh jobs.
@@ -169,6 +170,15 @@ async def search_jobs_db(
                 job_raw_location=job.location,
                 filter_locations=locations,
                 job_remote_type=job.remote_type,
+            ):
+                continue
+
+        if excluded_companies:
+            comp_lower = (job.company_name or "").lower().strip()
+            if any(
+                exc.lower().strip() in comp_lower or comp_lower in exc.lower().strip()
+                for exc in excluded_companies
+                if exc.strip()
             ):
                 continue
 
@@ -545,6 +555,7 @@ async def get_job_facets_db(
     experience_max: int | None = None,
     exclude_user_id: uuid.UUID | None = None,
     exclude_statuses: list[str] | None = None,
+    excluded_companies: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Compute global facet counts across all active fresh listings.
@@ -634,6 +645,15 @@ async def get_job_facets_db(
     exp_counts = {"FRESHER": 0, "0_1": 0, "1_2": 0, "2_3": 0, "3_PLUS": 0}
 
     for job in jobs:
+        if excluded_companies:
+            comp_lower = (job.company_name or "").lower().strip()
+            if any(
+                exc.lower().strip() in comp_lower or comp_lower in exc.lower().strip()
+                for exc in excluded_companies
+                if exc.strip()
+            ):
+                continue
+
         if query_lower:
             haystack = f"{job.title} {job.description} {' '.join(job.required_skills or [])}".lower()
             if query_lower not in haystack:

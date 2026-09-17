@@ -97,6 +97,7 @@ async def search_jobs_endpoint(
         exclude_unpaid=exclude_unpaid,
         exclude_user_id=user.id if exclude_rejected else None,
         exclude_statuses=exclude_statuses,
+        excluded_companies=prefs.excluded_companies if prefs and prefs.excluded_companies else None,
     )
 
     # Pre-fetch saved statuses for user
@@ -235,6 +236,7 @@ async def get_job_facets_endpoint(
     for all active fresh listings in database, dynamically scoped by active filters.
     """
     user = await get_or_create_default_user(db)
+    prefs = await get_or_create_preferences(db, user.id)
     exclude_statuses = ["SAVED", "APPLIED", "INTERVIEW", "OFFER", "REJECTED", "IGNORED"] if exclude_rejected else None
     return await get_job_facets_db(
         db=db,
@@ -247,6 +249,7 @@ async def get_job_facets_endpoint(
         experience_max=experience_max,
         exclude_user_id=user.id if exclude_rejected else None,
         exclude_statuses=exclude_statuses,
+        excluded_companies=prefs.excluded_companies if prefs and prefs.excluded_companies else None,
     )
 
 

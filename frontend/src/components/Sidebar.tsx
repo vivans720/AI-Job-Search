@@ -8,7 +8,6 @@ import {
   Bookmark,
   Settings,
   Sparkles,
-  ShieldCheck,
   User,
   Cpu,
   Sliders,
@@ -158,50 +157,6 @@ export function Sidebar() {
           ))}
         </nav>
 
-        {/* Footer Status Pod & Promo Banner */}
-        <div className="p-3 border-t border-slate-200 bg-slate-50/80 space-y-2.5 shrink-0">
-          {/* Live Engine Card */}
-          <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5 text-slate-900 font-bold">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span>Live Engine</span>
-              </div>
-              <span className="text-[11px] text-slate-500 font-mono font-medium">IST / 24h</span>
-            </div>
-
-            {/* Subtle waveform graphic */}
-            <div className="h-4 flex items-center justify-center gap-0.5 opacity-80">
-              <span className="w-0.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="w-0.5 h-2.5 bg-emerald-600 rounded-full" />
-              <span className="w-0.5 h-3.5 bg-emerald-700 rounded-full animate-pulse" />
-              <span className="w-0.5 h-2 bg-emerald-600 rounded-full" />
-              <span className="w-0.5 h-1 bg-emerald-500 rounded-full" />
-              <span className="w-0.5 h-2.5 bg-emerald-600 rounded-full" />
-              <span className="text-[10px] text-emerald-800 font-medium ml-1">Strict manual mode</span>
-            </div>
-
-            <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 text-[11px] text-slate-500">
-              <span className="flex items-center gap-1 text-slate-700 font-medium">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> prod
-              </span>
-              <div className="flex items-center gap-2">
-                <Link href="/settings" className="hover:text-slate-900 transition-colors font-medium">Privacy</Link>
-                <span>·</span>
-                <Link href="/settings" className="hover:text-slate-900 transition-colors font-medium">Docs</Link>
-              </div>
-            </div>
-          </div>
-
-          {/* Let AI find better opportunities promo banner */}
-          <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-50/80 via-teal-50/40 to-slate-100 border border-emerald-200/60 text-xs text-slate-800 relative overflow-hidden">
-            <p className="font-bold text-slate-900 leading-tight">Precision Radar</p>
-            <p className="text-[11px] text-slate-600 mt-0.5">Scoring fresh tech opportunities</p>
-          </div>
-        </div>
       </aside>
 
 
