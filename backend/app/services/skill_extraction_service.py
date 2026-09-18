@@ -25,70 +25,22 @@ def get_all_skill_forms(skill: str) -> set[str]:
     return forms
 
 
-def is_skill_present_in_text(
-    skill: str,
-    text: str,
-    explicit_skills: list[str] | None = None,
-) -> bool:
-    """
-    Verify that an extracted skill is genuinely grounded in the source text or explicit tags.
-    Prevents LLM hallucinations of unmentioned technologies.
-    """
-    if not skill or not text:
-        return False
-
-    all_forms = get_all_skill_forms(skill)
-
-    # 1. Match against explicit source tags
-    if explicit_skills:
-        for es in explicit_skills:
-            es_forms = get_all_skill_forms(es)
-            if all_forms & es_forms:
-                return True
-
-    text_lower = text.lower()
-
-    # 2. Match any form against text with boundary
-    for form in all_forms:
-        if re.search(r"[^a-zA-Z0-9\s]", form):
-            pattern = rf"(?<![a-zA-Z0-9]){re.escape(form)}(?![a-zA-Z0-9])"
-        else:
-            pattern = rf"\b{re.escape(form)}\b"
-        if re.search(pattern, text_lower):
-            return True
-
-    return False
-
-
 class SkillExtractionResult(BaseModel):
     required_skills: list[str] = Field(default_factory=list)
     preferred_skills: list[str] = Field(default_factory=list)
     nice_to_have_skills: list[str] = Field(default_factory=list)
-    method: str = "deterministic"  # "deterministic" | "llm_fallback" | "hybrid"
+    method: str = "deterministic"
     confidence: float = 1.0
-    raw_llm_response: dict[str, Any] | None = None
 
 
 class JobSkillExtractionService:
     """
     Orchestrates job skill extraction:
     Runs fast deterministic extraction with canonical normalization and precedence rules.
-    Zero LLM calls, avoiding rate limits and token costs.
     """
 
-    def __init__(self, llm_provider: Any = None):
-        # Kept for backward compatibility with existing constructor calls
+    def __init__(self):
         pass
-
-    def should_trigger_llm(
-        self,
-        description: str,
-        title: str | None,
-        det_req: list[str],
-        det_pref: list[str],
-    ) -> bool:
-        """LLM extraction disabled to avoid token usage and rate limits."""
-        return False
 
     async def extract_skills(
         self,

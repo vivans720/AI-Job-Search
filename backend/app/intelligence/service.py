@@ -7,8 +7,6 @@ from app.intelligence.base import BaseAIProvider
 from app.intelligence.llm_provider import get_llm_provider
 from app.intelligence.schemas import (
     CandidateProfileOutput,
-    JobSkillsOutput,
-    SkillNormalizationOutput,
     JobEnrichmentOutput,
 )
 from app.schemas.match import (
@@ -164,114 +162,6 @@ Guidelines:
                 summary="Profile parsed via fallback.",
             )
 
-    async def extract_job_skills(self, title: str, description: str) -> JobSkillsOutput:
-        """Phase 40: Extracts required vs preferred technical and soft skills using LLM with regex fallback."""
-        prompt = f"""Analyze this job posting and extract all required skills, preferred/bonus skills, tools/technologies, and soft skills.
-Job Title: {title}
-Job Description:
-{description[:4000]}
-
-Return JSON:
-{{
-  "required_skills": ["Must have technical skills"],
-  "preferred_skills": ["Nice to have / bonus skills"],
-  "tools_and_technologies": ["Specific tools, platforms, or cloud services"],
-  "soft_skills": ["Communication", "Problem Solving", etc]
-}}
-"""
-        messages = [
-            {"role": "system", "content": "You are an expert technical recruiter analyzing job descriptions. Return JSON only."},
-            {"role": "user", "content": prompt},
-        ]
-
-        try:
-            data = await self.provider.complete_json(messages)
-            req = normalize_skills(data.get("required_skills", []))
-            pref = normalize_skills(data.get("preferred_skills", []))
-            tools = normalize_skills(data.get("tools_and_technologies", []))
-            soft = [s.strip() for s in data.get("soft_skills", []) if s.strip()]
-
-            # Fallback augment from regex scan if LLM returned too few skills
-            regex_req, regex_pref = extract_skills_from_text(description, title=title)
-            final_req = normalize_skills(req + regex_req)
-            final_pref = [p for p in normalize_skills(pref + regex_pref) if p.lower() not in {r.lower() for r in final_req}]
-
-            return JobSkillsOutput(
-                required_skills=final_req,
-                preferred_skills=final_pref,
-                tools_and_technologies=tools,
-                soft_skills=soft,
-            )
-        except Exception as e:
-            logger.warning("ai_extract_job_skills_fallback", error=str(e))
-            regex_req, regex_pref = extract_skills_from_text(description, title=title)
-            return JobSkillsOutput(
-                required_skills=regex_req,
-                preferred_skills=regex_pref,
-                tools_and_technologies=[],
-                soft_skills=[],
-            )
-
-    async def normalize_skills_llm(self, ambiguous_skills: list[str]) -> SkillNormalizationOutput:
-        """Phase 40: Canonicalizes ambiguous, variant, or slang skill names to canonical industry standard names."""
-        if not ambiguous_skills:
-            return SkillNormalizationOutput(mappings=[])
-
-        # Check existing dictionary first
-        unresolved: list[str] = []
-        resolved_mappings: list[dict[str, str]] = []
-
-        for raw in ambiguous_skills:
-            raw_clean = raw.strip()
-            if not raw_clean:
-                continue
-            canonical = normalize_skill(raw_clean)
-            if canonical.lower() != raw_clean.lower() or raw_clean.lower() in CANONICAL_SKILLS:
-                resolved_mappings.append({"raw_token": raw_clean, "canonical_skill": canonical})
-            else:
-                unresolved.append(raw_clean)
-
-        if not unresolved:
-            return SkillNormalizationOutput(mappings=resolved_mappings)
-
-        # Prompt LLM to resolve ambiguous ones
-        prompt = f"""You are a tech taxonomy normalizer. Map each variant/spelling/raw skill to its single canonical industry standard skill name.
-Examples:
-- "React.js", "ReactJS", "react" -> "React"
-- "k8s" -> "Kubernetes"
-- "postgres" -> "PostgreSQL"
-- "fast api" -> "FastAPI"
-- "py" -> "Python"
-
-Map these terms:
-{', '.join(unresolved)}
-
-Return JSON:
-{{
-  "mappings": [
-    {{"raw_token": "raw input string", "canonical_skill": "Canonical Name"}}
-  ]
-}}
-"""
-        messages = [
-            {"role": "system", "content": "You are a precise technical dictionary standardizer. Output JSON."},
-            {"role": "user", "content": prompt},
-        ]
-
-        try:
-            data = await self.provider.complete_json(messages)
-            llm_mappings = data.get("mappings", [])
-            for item in llm_mappings:
-                raw_t = item.get("raw_token", "").strip()
-                can_s = item.get("canonical_skill", "").strip()
-                if raw_t and can_s:
-                    resolved_mappings.append({"raw_token": raw_t, "canonical_skill": can_s})
-        except Exception as e:
-            logger.warning("ai_normalize_skills_llm_fallback", error=str(e))
-            for raw in unresolved:
-                resolved_mappings.append({"raw_token": raw, "canonical_skill": normalize_skill(raw)})
-
-        return SkillNormalizationOutput(mappings=resolved_mappings)
 
     async def enrich_job(self, title: str, description: str, raw_data: dict[str, Any] | None = None) -> JobEnrichmentOutput:
         """Phase 40: Deep LLM-driven job enrichment (role standardization, seniority, requirements, tech stack)."""

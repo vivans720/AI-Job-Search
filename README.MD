@@ -33,7 +33,7 @@ flowchart TD
         LI --> RAW
         RAW --> DEDUP["Deduplication & Hash Check"]
         DEDUP --> FRESH["24h Freshness Filter (IST)"]
-        FRESH --> SKILLS["Skill Extraction (Regex + LLM)"]
+        FRESH --> SKILLS["Skill Extraction (Deterministic Taxonomy + Regex)"]
         SKILLS --> EMBED["Local Vector Embeddings (FastEmbed 384d)"]
     end
 

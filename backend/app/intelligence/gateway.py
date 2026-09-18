@@ -8,7 +8,6 @@ from openai import APIConnectionError, APITimeoutError, InternalServerError, Rat
 from app.intelligence.base import BaseAIProvider
 from app.intelligence.models import (
     AIModel,
-    AITelemetry,
     ProviderCapabilities,
     StreamEvent,
     ToolCallResult,

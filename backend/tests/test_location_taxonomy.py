@@ -98,17 +98,17 @@ def test_query_expansion():
 
 
 def test_delhi_ncr_does_not_leak_other_cities():
-    from app.services.job_service import _matches_location_token
+    from app.core.location_taxonomy import match_location_criteria
     expanded_ncr = expand_location_query(["Delhi NCR"])
     assert "del" not in expanded_ncr
     assert "hyd" not in expanded_ncr
     
-    # Check that none of expanded_ncr matches Hyderabad or Bangalore
-    for token in expanded_ncr:
-        assert not _matches_location_token(token, "hyderabad, india")
-        assert not _matches_location_token(token, "hyderabad")
-        assert not _matches_location_token(token, "bengaluru, karnataka")
-        assert not _matches_location_token(token, "mumbai, maharashtra")
+    # Check that Delhi NCR filter does not match unrelated cities
+    assert not match_location_criteria("Hyderabad, Telangana", "hyderabad, india", ["Delhi NCR"])
+    assert not match_location_criteria("Bengaluru, Karnataka", "bengaluru", ["Delhi NCR"])
+    assert not match_location_criteria("Mumbai, Maharashtra", "mumbai", ["Delhi NCR"])
+    assert match_location_criteria("Noida, Uttar Pradesh", "noida", ["Delhi NCR"])
+    assert match_location_criteria("Gurugram, Haryana", "gurgaon", ["Delhi NCR"])
 
 
 def test_taxonomy_tree_structure():

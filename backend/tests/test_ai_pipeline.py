@@ -3,8 +3,6 @@ from unittest.mock import AsyncMock, MagicMock
 from app.intelligence.service import AIService
 from app.intelligence.schemas import (
     CandidateProfileOutput,
-    JobSkillsOutput,
-    SkillNormalizationOutput,
     JobEnrichmentOutput,
 )
 
@@ -50,40 +48,6 @@ async def test_extract_candidate_profile_structured():
     p2 = await service.extract_candidate_profile("Internship resume text")
     assert p2.experience_years == 0.5
     assert p2.candidate_name == "Candidate"
-
-
-@pytest.mark.asyncio
-async def test_normalize_skills_canonical_dict():
-    service = AIService()
-    # "react.js", "py", "postgres" should resolve directly via canonical dict without provider
-    result = await service.normalize_skills_llm(["react.js", "py", "postgres"])
-    assert isinstance(result, SkillNormalizationOutput)
-    mapping_dict = {m.raw_token: m.canonical_skill for m in result.mappings}
-    assert mapping_dict["react.js"] == "React"
-    assert mapping_dict["py"] == "Python"
-    assert mapping_dict["postgres"] == "PostgreSQL"
-
-
-@pytest.mark.asyncio
-async def test_extract_job_skills_hybrid():
-    mock_provider = MagicMock()
-    mock_provider.complete_json = AsyncMock(return_value={
-        "required_skills": ["Python", "FastAPI"],
-        "preferred_skills": ["Docker", "Kubernetes"],
-        "tools_and_technologies": ["PostgreSQL", "Git"],
-        "soft_skills": ["Teamwork"]
-    })
-
-    service = AIService(provider=mock_provider)
-    result = await service.extract_job_skills(
-        title="Backend Engineer",
-        description="Looking for Python and FastAPI developer with Docker and k8s experience."
-    )
-
-    assert isinstance(result, JobSkillsOutput)
-    assert "Python" in result.required_skills
-    assert "FastAPI" in result.required_skills
-    assert "Teamwork" in result.soft_skills
 
 
 @pytest.mark.asyncio

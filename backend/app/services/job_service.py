@@ -11,7 +11,6 @@ from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
 from app.models.match import Match
 from app.models.saved_job import SavedJob
-from app.models.search import SearchRecord
 
 logger = structlog.get_logger(__name__)
 
@@ -25,21 +24,6 @@ VALID_STATUSES = {
     "OFFER",
     "IGNORED",
 }
-
-
-def _matches_location_token(token: str, text: str) -> bool:
-    """
-    Match location token in text using word boundaries to prevent substring collisions
-    (e.g., preventing 'del' from matching 'hyderabad' or short tokens falsely matching).
-    """
-    if not token or not text:
-        return False
-    # If token is short (<= 4 chars) or single word, use word boundary check
-    if len(token) <= 4 or " " not in token:
-        pattern = r"\b" + re.escape(token) + r"\b"
-        return bool(re.search(pattern, text))
-    return token in text
-
 
 
 async def search_jobs_db(
@@ -484,64 +468,6 @@ async def get_saved_jobs_for_user(
             }
         )
     return saved_list
-
-
-async def record_search_query(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    query_text: str | None,
-    structured_query: dict[str, Any],
-    sources_used: list[str],
-    total_discovered: int,
-    filtered_by_freshness: int,
-    deduplicated: int,
-    matched: int,
-    fresh_results: int,
-) -> SearchRecord:
-    search_rec = SearchRecord(
-        id=uuid.uuid4(),
-        user_id=user_id,
-        query_text=query_text,
-        structured_query=structured_query,
-        sources_used=sources_used,
-        total_discovered=total_discovered,
-        filtered_by_freshness=filtered_by_freshness,
-        deduplicated=deduplicated,
-        matched=matched,
-        fresh_results=fresh_results,
-    )
-    db.add(search_rec)
-    await db.commit()
-    await db.refresh(search_rec)
-    return search_rec
-
-
-async def get_search_history(
-    db: AsyncSession, user_id: uuid.UUID, limit: int = 10
-) -> list[dict[str, Any]]:
-    stmt = (
-        select(SearchRecord)
-        .where(SearchRecord.user_id == user_id)
-        .order_by(desc(SearchRecord.created_at))
-        .limit(limit)
-    )
-    result = await db.execute(stmt)
-    records = result.scalars().all()
-
-    return [
-        {
-            "id": str(r.id),
-            "query_text": r.query_text,
-            "structured_query": r.structured_query,
-            "sources_used": r.sources_used,
-            "total_discovered": r.total_discovered,
-            "filtered_by_freshness": r.filtered_by_freshness,
-            "fresh_results": r.fresh_results,
-            "matched": r.matched,
-            "created_at": r.created_at.isoformat(),
-        }
-        for r in records
-    ]
 
 
 async def get_job_facets_db(

@@ -7,7 +7,6 @@ import structlog
 from app.intelligence.models import (
     AIModel,
     ProviderCapabilities,
-    ProviderHealth,
     StreamEvent,
     TextDelta,
     StreamCompleted,

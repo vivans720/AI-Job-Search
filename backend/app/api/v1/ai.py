@@ -11,8 +11,6 @@ from app.intelligence.service import AIService
 from app.intelligence.extractors import enrich_job_record_llm
 from app.intelligence.schemas import (
     CandidateProfileOutput,
-    JobSkillsOutput,
-    SkillNormalizationOutput,
     JobEnrichmentOutput,
 )
 from app.services.preference_service import get_or_create_preferences
@@ -40,13 +38,6 @@ class AIProviderInfo(BaseModel):
     capabilities: dict[str, bool] = Field(default_factory=dict)
 
 
-class JobSkillsExtractRequest(BaseModel):
-    title: str
-    description: str
-
-
-class NormalizeSkillsRequest(BaseModel):
-    skills: list[str]
 
 
 class EnrichJobRequest(BaseModel):
@@ -161,18 +152,6 @@ async def test_ai_connection(
 # Phase 40 — AI Pipeline Endpoints
 # =====================================================================
 
-@router.post("/pipeline/extract-job-skills", response_model=JobSkillsOutput)
-async def extract_job_skills_endpoint(req: JobSkillsExtractRequest):
-    """Phase 40: Extracts required vs preferred skills and tech stack from job posting."""
-    service = AIService()
-    return await service.extract_job_skills(req.title, req.description)
-
-
-@router.post("/pipeline/normalize-skills", response_model=SkillNormalizationOutput)
-async def normalize_skills_endpoint(req: NormalizeSkillsRequest):
-    """Phase 40: Standardizes ambiguous/variant skills into canonical industry names."""
-    service = AIService()
-    return await service.normalize_skills_llm(req.skills)
 
 
 @router.post("/pipeline/enrich-job", response_model=JobEnrichmentOutput)

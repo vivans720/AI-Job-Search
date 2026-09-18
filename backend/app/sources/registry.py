@@ -28,40 +28,6 @@ class SourceRegistry:
     def get_enabled_sources(self) -> list[JobSource]:
         return [s for s in self._sources.values() if s.enabled]
 
-    async def search_all(self, query: JobSearchQuery) -> tuple[list[RawJob], dict[str, int]]:
-        """
-        Executes parallel search across all enabled sources with error isolation.
-        A failure in one source does not abort others.
-        """
-        enabled = self.get_enabled_sources()
-        if not enabled:
-            logger.warning("no_job_sources_enabled")
-            return [], {}
-
-        async def _run_source(src: JobSource) -> tuple[str, list[RawJob]]:
-            try:
-                results = await src.search(query)
-                return src.source_name, results
-            except Exception as e:
-                logger.error("source_search_failed", source=src.source_name, error=str(e))
-                return src.source_name, []
-
-        tasks = [_run_source(s) for s in enabled]
-        completed = await asyncio.gather(*tasks)
-
-        all_raw: list[RawJob] = []
-        source_counts: dict[str, int] = {}
-        for src_name, items in completed:
-            source_counts[src_name] = len(items)
-            all_raw.extend(items)
-
-        logger.info(
-            "multi_source_search_completed",
-            total_discovered=len(all_raw),
-            counts=source_counts,
-        )
-        return all_raw, source_counts
-
     async def sync_source_isolated(
         self,
         source: JobSource,

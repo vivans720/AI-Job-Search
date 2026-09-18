@@ -136,19 +136,6 @@ class QueueService:
             logger.debug("get_job_status_error", job_id=job_id, error=str(e))
             return None
 
-    async def get_queue_stats(self) -> Dict[str, int]:
-        redis = await get_redis()
-        if not redis:
-            return {"queue_length": 0, "dlq_length": 0}
-
-        try:
-            q_len = await redis.llen(self.queue_name)
-            dlq_len = await redis.llen(self.dlq_name)
-            return {"queue_length": q_len, "dlq_length": dlq_len}
-        except Exception:
-            return {"queue_length": 0, "dlq_length": 0}
-
-
     async def cancel_job(self, job_id: str) -> bool:
         redis = await get_redis()
         if not redis:

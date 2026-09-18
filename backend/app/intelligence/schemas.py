@@ -44,20 +44,6 @@ class CandidateProfileOutput(BaseModel):
     summary: str = ""
 
 
-class JobSkillsOutput(BaseModel):
-    required_skills: list[str] = Field(default_factory=list)
-    preferred_skills: list[str] = Field(default_factory=list)
-    tools_and_technologies: list[str] = Field(default_factory=list)
-    soft_skills: list[str] = Field(default_factory=list)
-
-
-class CanonicalSkillMapping(BaseModel):
-    raw_token: str
-    canonical_skill: str
-
-
-class SkillNormalizationOutput(BaseModel):
-    mappings: list[CanonicalSkillMapping] = Field(default_factory=list)
 
 
 class JobEnrichmentOutput(BaseModel):

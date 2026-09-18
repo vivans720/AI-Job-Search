@@ -11,6 +11,8 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jobagent_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobagent} -d ${POSTGRES_DB:-jobagent}"]
       interval: 5s
@@ -25,6 +27,8 @@ services:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - jobagent_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -49,6 +53,8 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/data:/app/data
+    networks:
+      - jobagent_network
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,22 +84,30 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434/v1}
     volumes:
       - ./backend/data:/app/data
+    networks:
+      - jobagent_network
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      backend:
         condition: service_healthy
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: jobagent_frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    networks:
+      - jobagent_network
     depends_on:
       backend:
         condition: service_healthy
@@ -102,6 +116,8 @@ services:
     image: ollama/ollama:latest
     container_name: jobagent_ollama
     restart: unless-stopped
+    profiles:
+      - ollama
     ports:
       - "127.0.0.1:11434:11434"
     volumes:
@@ -109,11 +125,17 @@ services:
     environment:
       - OLLAMA_NUM_PARALLEL=2
       - OLLAMA_MAX_LOADED_MODELS=1
+    networks:
+      - jobagent_network
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+networks:
+  jobagent_network:
+    driver: bridge
 
 volumes:
   postgres_data:

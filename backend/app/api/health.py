@@ -126,7 +126,6 @@ async def readiness_probe(db: AsyncSession = Depends(get_db)):
 
     # 4. Sources / Crawlers Registry
     try:
-        from app.sources.registry import source_registry
         sources_status = {
             "internshala": settings.SOURCE_INTERNSHALA_ENABLED,
             "naukri": settings.SOURCE_NAUKRI_ENABLED,
