@@ -176,7 +176,7 @@ Scoring prioritizes proven technical capability over inflated job titles or unca
 │   ├── server.py               # FastMCP server entry point
 │   └── tools/                  # Handlers for candidate, job, search, and match tools
 ├── scripts/                    # Ingestion, seeding, and agent execution scripts
-├── docker-compose.yml          # Multi-service stack (postgres, redis, backend, worker, frontend, ollama)
+├── docker-compose.yml          # Multi-service stack (postgres, redis, backend, worker, frontend, optional ollama)
 ├── Makefile                    # Standard project task runner
 └── .github/workflows/ci.yml    # Continuous integration pipeline
 ```
@@ -245,12 +245,17 @@ All settings are managed in `backend/app/config.py` and read from `.env` in the 
 
 ### Option A: Complete Docker Compose Stack
 
-Start all services (PostgreSQL with pgvector, Redis, FastAPI backend, background worker, Next.js frontend, and Ollama) with Docker Compose:
+Start services (PostgreSQL with pgvector, Redis, FastAPI backend, background worker, and Next.js frontend) with Docker Compose:
 
 ```bash
 docker compose up --build -d
 # or: make docker-up
 ```
+
+> **Note**: Ollama is optional and not pulled by default. To start local Ollama along with the stack:
+> ```bash
+> docker compose --profile ollama up --build -d
+> ```
 
 Verify services are healthy:
 ```bash
@@ -259,7 +264,8 @@ docker compose ps
 
 - **Frontend**: [http://localhost:3000](http://localhost:3000)
 - **Backend API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Health Endpoint**: [http://localhost:8000/api/health](http://localhost:8000/api/health)
+- **Health Endpoint**: [http://localhost:8000/health](http://localhost:8000/health)
+
 
 Stop services:
 ```bash
