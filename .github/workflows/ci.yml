@@ -148,6 +148,9 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: false
+          build-args: |
+            NEXT_PUBLIC_API_URL=http://localhost:8000
           cache-from: type=gha,scope=docker-frontend
           cache-to: type=gha,mode=max,scope=docker-frontend
+
 
