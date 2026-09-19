@@ -8,6 +8,7 @@ from app.models.saved_job import SavedJob
 from app.models.match import Match
 from app.models.search import SearchRecord
 from app.models.agent_activity import AgentRun, AgentEvent
+from app.models.agent_approval import AgentApproval
 
 __all__ = [
     "User",
@@ -21,4 +22,5 @@ __all__ = [
     "SearchRecord",
     "AgentRun",
     "AgentEvent",
+    "AgentApproval",
 ]

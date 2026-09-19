@@ -69,10 +69,18 @@ def summarize_tool_call(tool_name: str, kwargs: dict[str, Any], result: Any) -> 
     elif tool_name == "rank_jobs":
         cnt = len(result.get("ranked_jobs", [])) if isinstance(result, dict) else 0
         return f"Analyzed match scoring and shortlisted {cnt} top jobs"
-    elif tool_name == "save_job":
-        return f"Saved job {kwargs.get('job_id')}"
-    elif tool_name == "dismiss_job" or tool_name == "ignore_job":
+    elif tool_name in ("save_job", "batch_save_jobs"):
+        if isinstance(result, dict) and result.get("status") == "APPROVAL_REQUIRED":
+            return f"Requested user approval to save {kwargs.get('job_id') or str(len(kwargs.get('job_ids', []))) + ' jobs'}"
+        return f"Saved job {kwargs.get('job_id') or str(len(kwargs.get('job_ids', []))) + ' jobs'}"
+    elif tool_name in ("dismiss_job", "ignore_job"):
+        if isinstance(result, dict) and result.get("status") == "APPROVAL_REQUIRED":
+            return f"Requested user approval to dismiss job {kwargs.get('job_id')}"
         return f"Dismissed irrelevant job {kwargs.get('job_id')}"
+    elif tool_name in ("update_application", "update_application_status"):
+        if isinstance(result, dict) and result.get("status") == "APPROVAL_REQUIRED":
+            return f"Requested approval to update job {kwargs.get('job_id')} to {kwargs.get('status')}"
+        return f"Updated application status for job {kwargs.get('job_id')} to {kwargs.get('status')}"
     elif tool_name == "sync_jobs":
         sources = kwargs.get("sources") or "configured sources"
         return f"Triggered real-time scraping sync across {sources}"
@@ -92,7 +100,10 @@ async def log_tool_activity(
     
     # Execute actual tool
     try:
-        result = await func(**kwargs)
+        try:
+            result = await func(**kwargs)
+        except TypeError:
+            result = await func()
         duration_ms = int((time.perf_counter() - start_time) * 1000)
 
         if run_id:

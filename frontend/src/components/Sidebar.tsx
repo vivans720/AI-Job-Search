@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { getApiUrl } from "@/lib/api";
 import {
   Compass,
   Bookmark,
@@ -12,8 +13,10 @@ import {
   Cpu,
   Sliders,
   Activity,
+  ShieldAlert,
 } from "lucide-react";
 import { AgentActivityDrawer } from "@/components/agent/AgentActivityDrawer";
+import { ApprovalCenterModal } from "@/components/agent/ApprovalCenterModal";
 
 interface NavItem {
   href: string;
@@ -54,6 +57,26 @@ export function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+
+  const fetchPendingCount = async () => {
+    try {
+      const res = await fetch(getApiUrl("/api/v1/agent/approvals?status=PENDING"));
+      if (res.ok) {
+        const data = await res.json();
+        setPendingApprovalsCount(Array.isArray(data) ? data.length : 0);
+      }
+    } catch {
+      // Backend offline
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingCount();
+    const interval = setInterval(fetchPendingCount, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <>
@@ -160,8 +183,35 @@ export function Sidebar() {
           ))}
         </nav>
 
-        {/* Agent Activity Live Action Button */}
-        <div className="p-3 border-t border-slate-200/80 bg-slate-50/50">
+        {/* Agent Activity & Approval Triggers */}
+        <div className="p-3 border-t border-slate-200/80 bg-slate-50/50 space-y-2">
+          {/* Approval Center trigger */}
+          <button
+            onClick={() => setApprovalOpen(true)}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold border transition shadow-xs ${
+              pendingApprovalsCount > 0
+                ? "bg-purple-50 border-purple-300 text-purple-900 hover:bg-purple-100"
+                : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <ShieldAlert
+                className={`w-3.5 h-3.5 ${
+                  pendingApprovalsCount > 0 ? "text-purple-600" : "text-slate-400"
+                }`}
+              />
+              <span>Approvals</span>
+            </div>
+            {pendingApprovalsCount > 0 ? (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-purple-600 text-white animate-pulse">
+                {pendingApprovalsCount}
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-400 font-normal">All clear</span>
+            )}
+          </button>
+
+          {/* Activity Drawer trigger */}
           <button
             onClick={() => setActivityOpen(true)}
             className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900 shadow-xs transition"
@@ -185,6 +235,15 @@ export function Sidebar() {
       <AgentActivityDrawer
         isOpen={activityOpen}
         onClose={() => setActivityOpen(false)}
+      />
+
+      <ApprovalCenterModal
+        isOpen={approvalOpen}
+        onClose={() => {
+          setApprovalOpen(false);
+          fetchPendingCount();
+        }}
+        onResolved={fetchPendingCount}
       />
     </>
   );

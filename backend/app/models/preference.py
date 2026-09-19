@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -50,6 +51,18 @@ class Preference(Base):
     role_type: Mapped[str] = mapped_column(String(50), default="ALL")
     source_boards: Mapped[list[str]] = mapped_column(
         JSONB, default=lambda: ["LINKEDIN", "NAUKRI", "INTERNSHALA"]
+    )
+
+    # Configurable Agent Autonomy (Phase 7)
+    autonomy_policy: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        default=lambda: {
+            "search": "autonomous",
+            "analyze": "autonomous",
+            "save_job": "approval_required",
+            "dismiss_job": "approval_required",
+            "update_pipeline_status": "approval_required",
+        },
     )
 
     updated_at: Mapped[datetime] = mapped_column(

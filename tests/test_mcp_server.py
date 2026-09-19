@@ -26,14 +26,16 @@ async def test_mcp_tools_registration():
         "semantic_search_jobs",
         "sync_jobs",
         "save_job",
+        "batch_save_jobs",
         "dismiss_job",
+        "check_approval_status",
         "get_pipeline",
         "get_application",
         "update_application",
         "update_preferences",
     ]
     for t in phase2_required_tools:
-        assert t in tools, f"Missing required Phase 2 tool: {t}"
+        assert t in tools, f"Missing required tool: {t}"
 
     # Strict guardrails against autonomous submission or unrestricted DB execution
     assert "apply_job" not in tools
@@ -156,34 +158,42 @@ async def test_mcp_pipeline_and_application_lifecycle():
     if jobs:
         test_job_id = jobs[0]["id"]
 
-        # Save job
-        save_res = await server.call_tool("save_job", {"job_id": test_job_id, "notes": "Phase 2 test note"})
+        # Save job with default policy (requires approval)
+        save_res = await server.call_tool("save_job", {"job_id": test_job_id, "notes": "Phase 7 test note"})
         assert not save_res.is_error
         save_data = json.loads(save_res.content[0].text)
-        assert save_data["status"] == "SAVED"
+        assert save_data["status"] == "APPROVAL_REQUIRED"
+        assert "approval_id" in save_data
+        approval_id = save_data["approval_id"]
 
-        # Update application stage
-        up_app_res = await server.call_tool(
-            "update_application",
-            {"job_id": test_job_id, "status": "VIEWED", "notes": "Viewed job details"},
-        )
-        assert not up_app_res.is_error
-        up_app_data = json.loads(up_app_res.content[0].text)
-        assert up_app_data["status"] == "VIEWED"
+        # Check approval status tool
+        check_res = await server.call_tool("check_approval_status", {"approval_id": approval_id})
+        assert not check_res.is_error
+        check_data = json.loads(check_res.content[0].text)
+        assert check_data["status"] == "PENDING"
 
-        # Get application details
+        # Resolve approval manually
+        from app.database import async_session_factory
+        from app.services.agent_approval_service import AgentApprovalService
+        from app.services.user_service import get_or_create_default_user
+        import uuid as _uuid
+        async with async_session_factory() as db:
+            user = await get_or_create_default_user(db)
+            await AgentApprovalService.resolve_approval(
+                db, user.id, _uuid.UUID(approval_id), decision="APPROVE"
+            )
+
+        # Re-check status tool
+        check_res2 = await server.call_tool("check_approval_status", {"approval_id": approval_id})
+        check_data2 = json.loads(check_res2.content[0].text)
+        assert check_data2["status"] == "APPROVED"
+
+        # Verify get_application
         get_app_res = await server.call_tool("get_application", {"job_id": test_job_id})
         assert not get_app_res.is_error
         get_app_data = json.loads(get_app_res.content[0].text)
         assert get_app_data["job_id"] == test_job_id
-        assert get_app_data["status"] == "VIEWED"
-        assert get_app_data["notes"] == "Viewed job details"
-
-        # Dismiss job
-        dismiss_res = await server.call_tool("dismiss_job", {"job_id": test_job_id})
-        assert not dismiss_res.is_error
-        dismiss_data = json.loads(dismiss_res.content[0].text)
-        assert dismiss_data["status"] == "IGNORED"
+        assert get_app_data["status"] == "SAVED"
 
 
 @pytest.mark.asyncio

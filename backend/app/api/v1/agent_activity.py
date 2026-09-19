@@ -15,7 +15,15 @@ from app.schemas.agent_activity import (
     AgentRunResponse,
     StartAgentRunRequest,
 )
+from app.schemas.agent_approval import (
+    AgentApprovalResponse,
+    AutonomyPolicyResponse,
+    AutonomyPolicyUpdateRequest,
+    ResolveApprovalRequest,
+    ResolveApprovalResponse,
+)
 from app.services.agent_activity_service import AgentActivityService
+from app.services.agent_approval_service import AgentApprovalService
 from app.services.user_service import get_or_create_default_user
 
 router = APIRouter(prefix="/agent", tags=["agent-activity"])
@@ -172,3 +180,66 @@ async def stream_agent_events(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# -------------------------------------------------------------------------
+# Phase 7 — Agent Approvals & Autonomy Policy Endpoints
+# -------------------------------------------------------------------------
+
+@router.get("/approvals", response_model=list[AgentApprovalResponse])
+async def list_agent_approvals(
+    status: str | None = Query(None, description="Optional status filter: PENDING, APPROVED, REJECTED, EXPIRED"),
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """List agent approval requests for candidate review."""
+    user = await get_or_create_default_user(db)
+    return await AgentApprovalService.list_approvals(
+        db=db, user_id=user.id, status=status, limit=limit
+    )
+
+
+@router.post("/approvals/{approval_id}/resolve", response_model=ResolveApprovalResponse)
+async def resolve_agent_approval(
+    approval_id: uuid.UUID,
+    request: ResolveApprovalRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve or reject a pending agent action."""
+    user = await get_or_create_default_user(db)
+    try:
+        res = await AgentApprovalService.resolve_approval(
+            db=db,
+            user_id=user.id,
+            approval_id=approval_id,
+            decision=request.decision,
+            partial_job_ids=request.partial_job_ids,
+            resolution_notes=request.resolution_notes,
+        )
+        return ResolveApprovalResponse(**res)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/autonomy-policy", response_model=AutonomyPolicyResponse)
+async def get_autonomy_policy(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get candidate configurable agent autonomy policy."""
+    user = await get_or_create_default_user(db)
+    policy = await AgentApprovalService.get_autonomy_policy(db, user.id)
+    return AutonomyPolicyResponse(autonomy_policy=policy)
+
+
+@router.put("/autonomy-policy", response_model=AutonomyPolicyResponse)
+async def update_autonomy_policy(
+    request: AutonomyPolicyUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update candidate configurable agent autonomy policy."""
+    user = await get_or_create_default_user(db)
+    updated = await AgentApprovalService.update_autonomy_policy(
+        db=db, user_id=user.id, policy_updates=request.autonomy_policy
+    )
+    return AutonomyPolicyResponse(autonomy_policy=updated)
+

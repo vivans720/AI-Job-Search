@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   Info,
+  Shield,
 } from "lucide-react";
 import { getApiUrl } from "@/lib/api";
 
@@ -27,6 +28,14 @@ interface Preferences {
   ai_model?: string | null;
   ai_base_url?: string | null;
   has_custom_api_key?: boolean;
+}
+
+interface AutonomyPolicy {
+  search: string;
+  analyze: string;
+  save_job: string;
+  dismiss_job: string;
+  update_pipeline_status: string;
 }
 
 interface ScheduleInfo {
@@ -63,6 +72,16 @@ export default function SettingsPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "error">("all");
+
+  // Agent Autonomy states
+  const [autonomyPolicy, setAutonomyPolicy] = useState<AutonomyPolicy>({
+    search: "autonomous",
+    analyze: "autonomous",
+    save_job: "approval_required",
+    dismiss_job: "approval_required",
+    update_pipeline_status: "approval_required",
+  });
+  const [updatingPolicy, setUpdatingPolicy] = useState(false);
 
   const fetchPrefs = async () => {
     try {
@@ -138,6 +157,48 @@ export default function SettingsPage() {
     }
   };
 
+  const fetchAutonomyPolicy = async () => {
+    try {
+      const res = await fetch(getApiUrl("/api/v1/agent/autonomy-policy"));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.autonomy_policy) {
+          setAutonomyPolicy(data.autonomy_policy);
+        }
+      }
+    } catch {
+      // Backend offline
+    }
+  };
+
+  const handleTogglePolicy = async (actionKey: keyof AutonomyPolicy) => {
+    setUpdatingPolicy(true);
+    setMessage(null);
+    const nextVal = autonomyPolicy[actionKey] === "autonomous" ? "approval_required" : "autonomous";
+    const updated = { ...autonomyPolicy, [actionKey]: nextVal };
+    try {
+      const res = await fetch(getApiUrl("/api/v1/agent/autonomy-policy"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autonomy_policy: updated }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAutonomyPolicy(data.autonomy_policy);
+        setMessage({
+          type: "success",
+          text: `Autonomy for ${actionKey} set to ${nextVal}.`,
+        });
+      } else {
+        setMessage({ type: "error", text: "Failed to update autonomy policy." });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Network error updating policy." });
+    } finally {
+      setUpdatingPolicy(false);
+    }
+  };
+
   const handleTriggerScheduleNow = async () => {
     setTriggeringSchedule(true);
     setMessage(null);
@@ -168,6 +229,7 @@ export default function SettingsPage() {
     fetchPrefs();
     fetchSchedule();
     fetchSyncHistory();
+    fetchAutonomyPolicy();
   }, []);
 
   if (loading) {
@@ -328,6 +390,101 @@ export default function SettingsPage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Agent Autonomy & Approval Gates (Phase 7) */}
+      <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-card-subtle space-y-6">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-purple-50 border border-purple-200 text-purple-600">
+            <Shield className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Agent Autonomy & Approval Policy</h3>
+            <p className="text-[11px] text-slate-500">
+              Configure whether the agent can execute pipeline actions automatically or must pause for your review.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[
+            {
+              key: "search" as keyof AutonomyPolicy,
+              name: "Job Search & Retrieval",
+              desc: "Querying external job boards and database.",
+              fixed: true,
+              value: "autonomous",
+            },
+            {
+              key: "analyze" as keyof AutonomyPolicy,
+              name: "Match Scoring & Ranking",
+              desc: "Calculating skill match and ranking candidates.",
+              fixed: true,
+              value: "autonomous",
+            },
+            {
+              key: "save_job" as keyof AutonomyPolicy,
+              name: "Save Job to Pipeline",
+              desc: "Bookmark newly recommended jobs to your saved list.",
+              fixed: false,
+              value: autonomyPolicy.save_job,
+            },
+            {
+              key: "dismiss_job" as keyof AutonomyPolicy,
+              name: "Dismiss Irrelevant Job",
+              desc: "Hide jobs that do not fit candidate criteria.",
+              fixed: false,
+              value: autonomyPolicy.dismiss_job,
+            },
+            {
+              key: "update_pipeline_status" as keyof AutonomyPolicy,
+              name: "Update Application Stage",
+              desc: "Progress job statuses (e.g. Applied, Interview).",
+              fixed: false,
+              value: autonomyPolicy.update_pipeline_status,
+            },
+          ].map((item) => {
+            const isAuto = item.value === "autonomous";
+            return (
+              <div
+                key={item.key}
+                className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between gap-4"
+              >
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900">{item.name}</span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${
+                        isAuto
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-amber-50 text-amber-700 border border-amber-200"
+                      }`}
+                    >
+                      {isAuto ? "Autonomous" : "Approval Gate"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">{item.desc}</p>
+                </div>
+
+                {!item.fixed ? (
+                  <button
+                    disabled={updatingPolicy}
+                    onClick={() => handleTogglePolicy(item.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-xs border ${
+                      isAuto
+                        ? "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"
+                        : "bg-purple-600 border-purple-700 text-white hover:bg-purple-700"
+                    }`}
+                  >
+                    {isAuto ? "Require Approval" : "Allow Auto"}
+                  </button>
+                ) : (
+                  <span className="text-[11px] font-mono text-slate-400 italic">Always Auto</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Sync Ingestion Audit History */}

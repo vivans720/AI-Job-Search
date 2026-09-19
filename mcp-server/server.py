@@ -28,6 +28,8 @@ from tools.search_tools import (
     handle_sync_jobs,
 )
 from tools.job_tools import (
+    handle_batch_save_jobs,
+    handle_check_approval_status,
     handle_dismiss_job,
     handle_get_application,
     handle_get_job,
@@ -179,26 +181,50 @@ async def rank_jobs(job_ids: list[str]) -> dict[str, Any]:
 
 @server.tool(
     name="save_job",
-    description="Save a job to candidate's saved list for manual application later.",
+    description="Save a job to candidate's saved list. When policy requires approval, queues approval request for user review instead of mutating directly.",
 )
-async def save_job(job_id: str, notes: str | None = None) -> dict[str, Any]:
-    return await handle_save_job(job_id=job_id, notes=notes)
+async def save_job(
+    job_id: str, notes: str | None = None, reason: str | None = None
+) -> dict[str, Any]:
+    args = {"job_id": job_id, "notes": notes, "reason": reason}
+    return await log_tool_activity("save_job", args, lambda: handle_save_job(**args))
+
+
+@server.tool(
+    name="batch_save_jobs",
+    description="Recommend and save a batch of relevant jobs for the candidate. Subject to autonomy approval policy.",
+)
+async def batch_save_jobs(
+    job_ids: list[str], notes: str | None = None, reason: str | None = None
+) -> dict[str, Any]:
+    args = {"job_ids": job_ids, "notes": notes, "reason": reason}
+    return await log_tool_activity("batch_save_jobs", args, lambda: handle_batch_save_jobs(**args))
 
 
 @server.tool(
     name="dismiss_job",
-    description="Dismiss or ignore a job so it does not appear in candidate recommendations.",
+    description="Dismiss or ignore a job so it does not appear in candidate recommendations. Subject to approval policy.",
 )
 async def dismiss_job(job_id: str, reason: str | None = None) -> dict[str, Any]:
-    return await handle_dismiss_job(job_id=job_id, reason=reason)
+    args = {"job_id": job_id, "reason": reason}
+    return await log_tool_activity("dismiss_job", args, lambda: handle_dismiss_job(**args))
 
 
 @server.tool(
     name="ignore_job",
     description="Mark a job as ignored so it does not clutter recommendations (alias of dismiss_job).",
 )
-async def ignore_job(job_id: str) -> dict[str, Any]:
-    return await handle_ignore_job(job_id=job_id)
+async def ignore_job(job_id: str, reason: str | None = None) -> dict[str, Any]:
+    args = {"job_id": job_id, "reason": reason}
+    return await log_tool_activity("ignore_job", args, lambda: handle_ignore_job(**args))
+
+
+@server.tool(
+    name="check_approval_status",
+    description="Check whether a previously queued approval request (e.g. from save_job, batch_save_jobs) was approved, rejected, or is still pending.",
+)
+async def check_approval_status(approval_id: str) -> dict[str, Any]:
+    return await handle_check_approval_status(approval_id=approval_id)
 
 
 @server.tool(
@@ -222,19 +248,21 @@ async def get_application(job_id: str) -> dict[str, Any]:
     description="Update tracking stage and notes for a job application. (NOTE: Never auto-applies. Candidate applies manually).",
 )
 async def update_application(
-    job_id: str, status: str, notes: str | None = None
+    job_id: str, status: str, notes: str | None = None, reason: str | None = None
 ) -> dict[str, Any]:
-    return await handle_update_application(job_id=job_id, status=status, notes=notes)
+    args = {"job_id": job_id, "status": status, "notes": notes, "reason": reason}
+    return await log_tool_activity("update_application", args, lambda: handle_update_application_status(**args))
 
 
 @server.tool(
     name="update_application_status",
-    description="Update manual tracking status for a job (DISCOVERED, SAVED, VIEWED, APPLIED, INTERVIEW, REJECTED, OFFER, IGNORED).",
+    description="Update manual tracking status for a job (DISCOVERED, SAVED, VIEWED, APPLIED, INTERVIEW, REJECTED, OFFER, IGNORED). Subject to approval gate.",
 )
 async def update_application_status(
-    job_id: str, status: str, notes: str | None = None
+    job_id: str, status: str, notes: str | None = None, reason: str | None = None
 ) -> dict[str, Any]:
-    return await handle_update_application_status(job_id=job_id, status=status, notes=notes)
+    args = {"job_id": job_id, "status": status, "notes": notes, "reason": reason}
+    return await log_tool_activity("update_application_status", args, lambda: handle_update_application_status(**args))
 
 
 @server.tool(
