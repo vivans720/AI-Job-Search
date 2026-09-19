@@ -40,6 +40,8 @@ from tools.job_tools import (
     handle_update_application_status,
 )
 from tools.match_tools import handle_match_job, handle_rank_jobs
+from tools.activity_tools import handle_notify_activity
+from middleware.activity_logger import log_tool_activity
 
 server = MCPServer("job-agent-india")
 
@@ -53,7 +55,7 @@ server = MCPServer("job-agent-india")
     description="Returns structured candidate intelligence extracted from the user's resume, including target roles, skills, experience level, and preferences.",
 )
 async def get_candidate_profile() -> dict[str, Any]:
-    return await handle_get_candidate_profile()
+    return await log_tool_activity("get_candidate_profile", {}, handle_get_candidate_profile)
 
 
 @server.tool(
@@ -61,7 +63,7 @@ async def get_candidate_profile() -> dict[str, Any]:
     description="Returns candidate job search and synchronization preferences (freshness, locations, experience level, role types, source boards).",
 )
 async def get_preferences() -> dict[str, Any]:
-    return await handle_get_preferences()
+    return await log_tool_activity("get_preferences", {}, handle_get_preferences)
 
 
 @server.tool(
@@ -69,7 +71,7 @@ async def get_preferences() -> dict[str, Any]:
     description="Updates candidate search and filtering preferences safely. Validates fields and values.",
 )
 async def update_preferences(updates: dict[str, Any]) -> dict[str, Any]:
-    return await handle_update_preferences(updates=updates)
+    return await log_tool_activity("update_preferences", {"updates": updates}, lambda: handle_update_preferences(updates=updates))
 
 
 # -------------------------------------------------------------------------
@@ -89,14 +91,19 @@ async def search_jobs(
     include_remote: bool = True,
     limit: int = 20,
 ) -> dict[str, Any]:
-    return await handle_search_jobs(
-        query=query,
-        roles=roles,
-        locations=locations,
-        experience_max=experience_max,
-        freshness_hours=freshness_hours,
-        include_remote=include_remote,
-        limit=limit,
+    args = {
+        "query": query,
+        "roles": roles,
+        "locations": locations,
+        "experience_max": experience_max,
+        "freshness_hours": freshness_hours,
+        "include_remote": include_remote,
+        "limit": limit,
+    }
+    return await log_tool_activity(
+        "search_jobs",
+        args,
+        lambda: handle_search_jobs(**args),
     )
 
 
@@ -109,10 +116,11 @@ async def semantic_search_jobs(
     limit: int = 10,
     freshness_hours: int = 24,
 ) -> dict[str, Any]:
-    return await handle_semantic_search_jobs(
-        query=query,
-        limit=limit,
-        freshness_hours=freshness_hours,
+    args = {"query": query, "limit": limit, "freshness_hours": freshness_hours}
+    return await log_tool_activity(
+        "semantic_search_jobs",
+        args,
+        lambda: handle_semantic_search_jobs(**args),
     )
 
 
@@ -121,7 +129,7 @@ async def semantic_search_jobs(
     description="Get full details of a specific job by ID, including original application URL, description, requirements, and match score.",
 )
 async def get_job(job_id: str) -> dict[str, Any]:
-    return await handle_get_job(job_id=job_id)
+    return await log_tool_activity("get_job", {"job_id": job_id}, lambda: handle_get_job(job_id=job_id))
 
 
 @server.tool(
@@ -129,7 +137,7 @@ async def get_job(job_id: str) -> dict[str, Any]:
     description="Get details for multiple jobs at once given a list of job UUID strings.",
 )
 async def get_jobs(job_ids: list[str]) -> dict[str, Any]:
-    return await handle_get_jobs(job_ids=job_ids)
+    return await log_tool_activity("get_jobs", {"job_ids": job_ids}, lambda: handle_get_jobs(job_ids=job_ids))
 
 
 @server.tool(
@@ -141,11 +149,8 @@ async def sync_jobs(
     freshness_hours: int = 24,
     skills: list[str] | None = None,
 ) -> dict[str, Any]:
-    return await handle_sync_jobs(
-        source=source,
-        freshness_hours=freshness_hours,
-        skills=skills,
-    )
+    args = {"source": source, "freshness_hours": freshness_hours, "skills": skills}
+    return await log_tool_activity("sync_jobs", args, lambda: handle_sync_jobs(**args))
 
 
 # -------------------------------------------------------------------------
@@ -157,7 +162,7 @@ async def sync_jobs(
     description="Evaluate and return match breakdown for a specific job against candidate profile (skills, semantic similarity, experience, role relevance, location).",
 )
 async def match_job(job_id: str) -> dict[str, Any]:
-    return await handle_match_job(job_id=job_id)
+    return await log_tool_activity("match_job", {"job_id": job_id}, lambda: handle_match_job(job_id=job_id))
 
 
 @server.tool(
@@ -165,7 +170,7 @@ async def match_job(job_id: str) -> dict[str, Any]:
     description="Rank a list of job IDs by relevance and match score against candidate profile. Returns ordered list with score breakdown.",
 )
 async def rank_jobs(job_ids: list[str]) -> dict[str, Any]:
-    return await handle_rank_jobs(job_ids=job_ids)
+    return await log_tool_activity("rank_jobs", {"job_ids": job_ids}, lambda: handle_rank_jobs(job_ids=job_ids))
 
 
 # -------------------------------------------------------------------------
@@ -245,7 +250,19 @@ async def get_saved_jobs(status: str | None = None) -> dict[str, Any]:
     description="Retrieve recent search queries and their discovery/freshness statistics.",
 )
 async def get_search_history(limit: int = 10) -> dict[str, Any]:
-    return await handle_get_search_history(limit=limit)
+    return await log_tool_activity("get_search_history", {"limit": limit}, handle_get_search_history)
+
+
+@server.tool(
+    name="notify_activity",
+    description="Broadcast a high-level, human-readable milestone message to the user activity stream (e.g. 'Planned search for Bengaluru ML roles', 'Filtered 45 jobs down to 8 matches'). NEVER output raw chain-of-thought.",
+)
+async def notify_activity(
+    message: str,
+    category: str = "milestone",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return await handle_notify_activity(message=message, category=category, metadata=metadata)
 
 
 if __name__ == "__main__":

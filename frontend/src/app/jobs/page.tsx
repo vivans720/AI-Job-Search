@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { SyncProgressModal } from "@/components/SyncProgressModal";
 import JobDetailDrawer from "@/components/jobs/JobDetailDrawer";
+import { AgentActivityDrawer } from "@/components/agent/AgentActivityDrawer";
 import { loadUserPreferences, saveUserPreferences } from "@/lib/preferences";
 
 interface SkillPartition {
@@ -162,6 +163,7 @@ export default function JobsPage() {
     jobs: JobItem[];
   } | null>(null);
   const [rejectingAll, setRejectingAll] = useState(false);
+  const [agentActivityOpen, setAgentActivityOpen] = useState(false);
 
   const handleSyncLive = async (targetSource?: string) => {
     const src = targetSource || syncSource;
@@ -988,6 +990,15 @@ export default function JobsPage() {
           )}
 
           <button
+            onClick={() => setAgentActivityOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300/80 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-xs"
+            title="Agent Activity & Observability"
+          >
+            <Activity className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Agent Activity</span>
+          </button>
+
+          <button
             onClick={() => handleSyncLive()}
             disabled={syncing}
             className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer"
@@ -1648,6 +1659,12 @@ export default function JobsPage() {
           <span>{prefToast}</span>
         </div>
       )}
+
+      {/* Agent Activity & Observability Drawer */}
+      <AgentActivityDrawer
+        isOpen={agentActivityOpen}
+        onClose={() => setAgentActivityOpen(false)}
+      />
     </div>
   );
 }

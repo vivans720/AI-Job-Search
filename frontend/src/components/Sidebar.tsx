@@ -11,7 +11,9 @@ import {
   User,
   Cpu,
   Sliders,
+  Activity,
 } from "lucide-react";
+import { AgentActivityDrawer } from "@/components/agent/AgentActivityDrawer";
 
 interface NavItem {
   href: string;
@@ -51,6 +53,7 @@ const navGroups: NavGroup[] = [
 export function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   return (
     <>
@@ -157,9 +160,32 @@ export function Sidebar() {
           ))}
         </nav>
 
+        {/* Agent Activity Live Action Button */}
+        <div className="p-3 border-t border-slate-200/80 bg-slate-50/50">
+          <button
+            onClick={() => setActivityOpen(true)}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900 shadow-xs transition"
+          >
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-emerald-600" />
+                Agent Activity
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-normal">View stream</span>
+          </button>
+        </div>
+
       </aside>
 
-
+      <AgentActivityDrawer
+        isOpen={activityOpen}
+        onClose={() => setActivityOpen(false)}
+      />
     </>
   );
 }
