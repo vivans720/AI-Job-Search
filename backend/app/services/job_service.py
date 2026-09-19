@@ -649,3 +649,132 @@ async def get_job_facets_db(
         "locations": location_counts,
         "experience": exp_counts,
     }
+
+
+async def get_jobs_by_ids(
+    db: AsyncSession, job_ids: list[uuid.UUID]
+) -> list[dict[str, Any]]:
+    """Retrieve multiple jobs by IDs."""
+    if not job_ids:
+        return []
+    results = []
+    for jid in job_ids:
+        j = await get_job_by_id(db, jid)
+        if j:
+            results.append(j)
+    return results
+
+
+async def semantic_search_jobs_db(
+    db: AsyncSession,
+    query: str,
+    limit: int = 10,
+    freshness_hours: int = 24,
+) -> list[dict[str, Any]]:
+    """
+    Search jobs by semantic similarity using pgvector cosine distance.
+    Filters by freshness_hours and active status.
+    """
+    from app.intelligence.embedding_provider import get_embedding_provider
+    query_vector = get_embedding_provider().embed(query)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=freshness_hours)
+    stmt = (
+        select(Job)
+        .where(
+            Job.is_active == True,  # noqa: E712
+            Job.posted_at.is_not(None),
+            Job.posted_at >= cutoff,
+            Job.embedding.is_not(None),
+            Job.source != "sample",
+        )
+        .order_by(Job.embedding.cosine_distance(query_vector))
+        .limit(limit)
+    )
+    res = await db.execute(stmt)
+    jobs = res.scalars().all()
+
+    results = []
+    for job in jobs:
+        results.append(
+            {
+                "id": str(job.id),
+                "title": job.title,
+                "company": job.company_name,
+                "location": job.location,
+                "remote_type": job.remote_type,
+                "employment_type": job.employment_type or "FULL_TIME",
+                "salary": job.salary_raw or "Not disclosed",
+                "posted_at": job.posted_at.isoformat() if job.posted_at else None,
+                "source": job.source,
+                "application_url": job.application_url,
+                "required_skills": job.required_skills or [],
+                "quality_score": job.quality_score,
+            }
+        )
+    return results
+
+
+async def record_search_query(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    query_text: str | None = None,
+    structured_query: dict[str, Any] | None = None,
+    sources_used: list[str] | None = None,
+    total_discovered: int = 0,
+    filtered_by_freshness: int = 0,
+    deduplicated: int = 0,
+    matched: int = 0,
+    fresh_results: int = 0,
+) -> SearchRecord:
+    """Record a search query execution into search history."""
+    from app.models.search import SearchRecord
+
+    record = SearchRecord(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        query_text=query_text,
+        structured_query=structured_query or {},
+        sources_used=sources_used or [],
+        total_discovered=total_discovered,
+        filtered_by_freshness=filtered_by_freshness,
+        deduplicated=deduplicated,
+        matched=matched,
+        fresh_results=fresh_results,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+async def get_search_history(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Retrieve search history for user."""
+    from app.models.search import SearchRecord
+
+    stmt = (
+        select(SearchRecord)
+        .where(SearchRecord.user_id == user_id)
+        .order_by(desc(SearchRecord.created_at))
+        .limit(limit)
+    )
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    return [
+        {
+            "id": str(r.id),
+            "query_text": r.query_text,
+            "structured_query": r.structured_query,
+            "sources_used": r.sources_used,
+            "total_discovered": r.total_discovered,
+            "fresh_results": r.fresh_results,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in records
+    ]
+
