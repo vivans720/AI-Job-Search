@@ -43,6 +43,7 @@ from tools.job_tools import (
 )
 from tools.match_tools import handle_match_job, handle_rank_jobs
 from tools.activity_tools import handle_notify_activity
+from tools.research_tools import handle_get_job_research, handle_research_job_page
 from middleware.activity_logger import log_tool_activity
 
 server = MCPServer("job-agent-india")
@@ -291,6 +292,34 @@ async def notify_activity(
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return await handle_notify_activity(message=message, category=category, metadata=metadata)
+
+
+# -------------------------------------------------------------------------
+# Deep Browser Research Tools (Phase 8)
+# -------------------------------------------------------------------------
+
+@server.tool(
+    name="research_job_page",
+    description="Deeply inspects the live job posting / careers portal URL via browser automation to extract detailed requirements, team context, application questions, and active hiring status.",
+)
+async def research_job_page(
+    job_id: str,
+    timeout_seconds: int = 25,
+) -> dict[str, Any]:
+    args = {"job_id": job_id, "timeout_seconds": timeout_seconds}
+    return await log_tool_activity(
+        "research_job_page",
+        args,
+        lambda: handle_research_job_page(job_id=job_id, timeout_seconds=timeout_seconds),
+    )
+
+
+@server.tool(
+    name="get_job_research",
+    description="Fetches previously recorded browser research insights and context for a job.",
+)
+async def get_job_research(job_id: str) -> dict[str, Any]:
+    return await handle_get_job_research(job_id=job_id)
 
 
 if __name__ == "__main__":

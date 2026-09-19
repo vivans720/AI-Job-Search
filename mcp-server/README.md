@@ -24,6 +24,8 @@ Model Context Protocol (MCP) server providing structured tools for the **Hermes 
 | `get_application` | Get tracking details, status stage, and notes for a specific application. |
 | `update_application` | Update manual application status and notes. |
 | `get_search_history` | Retrieve recent searches and discovery/freshness statistics. |
+| `research_job_page` | Deep browser research on live posting URL (extracts requirements, tech stack, hiring status). |
+| `get_job_research` | Retrieves cached browser research findings for a specific job. |
 
 > [!CAUTION]
 > **Strict Guardrails Enforced**:
