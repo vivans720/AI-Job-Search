@@ -114,7 +114,16 @@ def _instantiate_single_provider(
             timeout=timeout,
         )
 
-    elif name in ("openai-compatible", "openai_compatible", "generic", "vllm", "omniroute", "custom"):
+    elif name in ("omniroute",):
+        return OpenAICompatibleProvider(
+            base_url=base_url or settings.OMNIROUTE_BASE_URL,
+            api_key=api_key or settings.OMNIROUTE_API_KEY,
+            model=model or settings.OMNIROUTE_MODEL,
+            timeout=timeout or settings.OMNIROUTE_TIMEOUT,
+            provider_name="omniroute",
+        )
+
+    elif name in ("openai-compatible", "openai_compatible", "generic", "vllm", "custom"):
         return OpenAIProvider(
             base_url=base_url or settings.CUSTOM_AI_BASE_URL or settings.LLM_BASE_URL,
             api_key=api_key or settings.CUSTOM_AI_API_KEY or settings.LLM_API_KEY,

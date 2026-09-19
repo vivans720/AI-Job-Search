@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     CUSTOM_AI_API_KEY: str = ""
     CUSTOM_AI_MODEL: str = ""
 
+    # OmniRoute (Gateway Inference Endpoint)
+    OMNIROUTE_BASE_URL: str = "http://localhost:8000/v1"
+    OMNIROUTE_API_KEY: str = ""
+    OMNIROUTE_MODEL: str = "gpt-4o-mini"
+    OMNIROUTE_TIMEOUT: float = 45.0
+
 
     # Sources
     SOURCE_SAMPLE_ENABLED: bool = False

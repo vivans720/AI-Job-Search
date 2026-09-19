@@ -299,3 +299,24 @@ ProviderRegistry.register(
         ),
     ),
 )
+
+ProviderRegistry.register(
+    "omniroute",
+    OpenAICompatibleProvider,
+    ProviderMetadata(
+        id="omniroute",
+        name="OmniRoute AI Gateway",
+        type="cloud",
+        default_model=settings.OMNIROUTE_MODEL,
+        requires_api_key=False,
+        description="Unified model gateway exposing OpenAI-compatible endpoints with dynamic multi-provider routing.",
+        capabilities=ProviderCapabilities(
+            supports_streaming=True,
+            supports_tools=True,
+            supports_structured_output=True,
+            supports_vision=True,
+            supports_reasoning=True,
+            supports_model_discovery=True,
+        ),
+    ),
+)

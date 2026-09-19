@@ -118,6 +118,7 @@ Thumbs.db
 .devin/skills
 .hermes/skills
 skills-lock.json
+graphify-out/
 
 # ── One-Off Reports & Research Docs ──
 deep-research-report.md

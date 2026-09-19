@@ -76,6 +76,8 @@ async def list_ai_providers(db: AsyncSession = Depends(get_db)):
             return bool(settings.OPENCODE_BASE_URL)
         if pid == "openai-compatible":
             return bool(settings.CUSTOM_AI_BASE_URL or settings.LLM_BASE_URL or pref.ai_base_url)
+        if pid == "omniroute":
+            return bool(settings.OMNIROUTE_BASE_URL or pref.ai_base_url)
         return False
 
     registered = ProviderRegistry.list_providers()
