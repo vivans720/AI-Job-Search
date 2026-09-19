@@ -47,38 +47,14 @@ class EnrichJobRequest(BaseModel):
 
 @router.get("/providers", response_model=list[AIProviderInfo])
 async def list_ai_providers(db: AsyncSession = Depends(get_db)):
-    """List all 11 supported AI providers with capability metadata and configuration status."""
+    """List supported AI gateway (OmniRoute) with capability metadata and configuration status."""
     from app.intelligence.registry import ProviderRegistry
 
     user = await get_or_create_default_user(db)
     pref = await get_or_create_preferences(db, user.id)
 
     def is_configured(pid: str) -> bool:
-        if pid == "ollama":
-            return True
-        if pid == "openai":
-            return bool(settings.OPENAI_API_KEY or (pref.ai_provider == "openai" and pref.ai_api_key))
-        if pid == "gemini":
-            return bool(settings.GEMINI_API_KEY or (pref.ai_provider == "gemini" and pref.ai_api_key))
-        if pid == "anthropic":
-            return bool(settings.ANTHROPIC_API_KEY or (pref.ai_provider == "anthropic" and pref.ai_api_key))
-        if pid == "groq":
-            return bool(settings.GROQ_API_KEY or (pref.ai_provider == "groq" and pref.ai_api_key))
-        if pid == "openrouter":
-            return bool(settings.OPENROUTER_API_KEY or (pref.ai_provider == "openrouter" and pref.ai_api_key))
-        if pid == "cerebras":
-            return bool(settings.CEREBRAS_API_KEY or (pref.ai_provider == "cerebras" and pref.ai_api_key))
-        if pid == "mistral":
-            return bool(settings.MISTRAL_API_KEY or (pref.ai_provider == "mistral" and pref.ai_api_key))
-        if pid == "nvidia-nim":
-            return bool(settings.NVIDIA_NIM_API_KEY or (pref.ai_provider == "nvidia-nim" and pref.ai_api_key))
-        if pid == "opencode":
-            return bool(settings.OPENCODE_BASE_URL)
-        if pid == "openai-compatible":
-            return bool(settings.CUSTOM_AI_BASE_URL or settings.LLM_BASE_URL or pref.ai_base_url)
-        if pid == "omniroute":
-            return bool(settings.OMNIROUTE_BASE_URL or pref.ai_base_url)
-        return False
+        return bool(settings.OMNIROUTE_BASE_URL or pref.ai_base_url)
 
     registered = ProviderRegistry.list_providers()
     res: list[AIProviderInfo] = []
@@ -88,11 +64,11 @@ async def list_ai_providers(db: AsyncSession = Depends(get_db)):
                 id=p.id,
                 name=p.name,
                 type=p.type,
-                default_model=p.default_model,
+                default_model=pref.ai_model or settings.DEFAULT_AGENT_MODEL or p.default_model,
                 configured=is_configured(p.id),
                 description=p.description,
                 requires_api_key=p.requires_api_key,
-                base_url=p.base_url,
+                base_url=pref.ai_base_url or settings.OMNIROUTE_BASE_URL,
                 capabilities=p.capabilities.model_dump(),
             )
         )

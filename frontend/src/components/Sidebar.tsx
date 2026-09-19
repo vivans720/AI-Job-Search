@@ -42,7 +42,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/profile", label: "Profile", icon: User },
       { href: "/preferences", label: "Preferences", icon: Sliders },
-      { href: "/ai-provider", label: "AI Provider", icon: Cpu },
+      { href: "/ai-provider", label: "Agent Configuration", icon: Cpu },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
