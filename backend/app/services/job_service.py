@@ -11,6 +11,7 @@ from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
 from app.models.match import Match
 from app.models.saved_job import SavedJob
+from app.models.search import SearchRecord
 
 logger = structlog.get_logger(__name__)
 
@@ -728,8 +729,6 @@ async def record_search_query(
     fresh_results: int = 0,
 ) -> SearchRecord:
     """Record a search query execution into search history."""
-    from app.models.search import SearchRecord
-
     record = SearchRecord(
         id=uuid.uuid4(),
         user_id=user_id,
@@ -754,8 +753,6 @@ async def get_search_history(
     limit: int = 10,
 ) -> list[dict[str, Any]]:
     """Retrieve search history for user."""
-    from app.models.search import SearchRecord
-
     stmt = (
         select(SearchRecord)
         .where(SearchRecord.user_id == user_id)
