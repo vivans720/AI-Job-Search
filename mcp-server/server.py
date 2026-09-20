@@ -44,6 +44,13 @@ from tools.job_tools import (
 from tools.match_tools import handle_match_job, handle_rank_jobs
 from tools.activity_tools import handle_notify_activity
 from tools.research_tools import handle_get_job_research, handle_research_job_page
+from tools.application_tools import (
+    handle_generate_application_answers,
+    handle_generate_cover_letter,
+    handle_get_application_preparation,
+    handle_prepare_application,
+    handle_prepare_resume,
+)
 from middleware.activity_logger import log_tool_activity
 
 server = MCPServer("job-agent-india")
@@ -320,6 +327,92 @@ async def research_job_page(
 )
 async def get_job_research(job_id: str) -> dict[str, Any]:
     return await handle_get_job_research(job_id=job_id)
+
+
+# -------------------------------------------------------------------------
+# Application Preparation Tools (Phase 9)
+# -------------------------------------------------------------------------
+
+@server.tool(
+    name="prepare_application",
+    description="Prepares a complete application (resume selection, tailored cover letter, Q&A answers) for a job without submitting. Places application in READY_FOR_REVIEW state.",
+)
+async def prepare_application(
+    job_id: str,
+    resume_mode: str = "EXISTING",
+    include_cover_letter: bool = True,
+    questions: list[str] | None = None,
+) -> dict[str, Any]:
+    args = {
+        "job_id": job_id,
+        "resume_mode": resume_mode,
+        "include_cover_letter": include_cover_letter,
+        "questions": questions,
+    }
+    return await log_tool_activity(
+        "prepare_application",
+        args,
+        lambda: handle_prepare_application(
+            job_id=job_id,
+            resume_mode=resume_mode,
+            include_cover_letter=include_cover_letter,
+            questions=questions,
+        ),
+    )
+
+
+@server.tool(
+    name="prepare_resume",
+    description="Prepares candidate resume for a job: 'EXISTING' preserves active resume as-is; 'TAILORED' reframes experience with strict anti-hallucination.",
+)
+async def prepare_resume(job_id: str, mode: str = "EXISTING") -> dict[str, Any]:
+    args = {"job_id": job_id, "mode": mode}
+    return await log_tool_activity(
+        "prepare_resume",
+        args,
+        lambda: handle_prepare_resume(job_id=job_id, mode=mode),
+    )
+
+
+@server.tool(
+    name="generate_cover_letter",
+    description="Generates an authentic, tailored cover letter based on candidate profile and deep browser research.",
+)
+async def generate_cover_letter(
+    job_id: str,
+    tone: str = "PROFESSIONAL",
+    custom_notes: str | None = None,
+) -> dict[str, Any]:
+    args = {"job_id": job_id, "tone": tone, "custom_notes": custom_notes}
+    return await log_tool_activity(
+        "generate_cover_letter",
+        args,
+        lambda: handle_generate_cover_letter(job_id=job_id, tone=tone, custom_notes=custom_notes),
+    )
+
+
+@server.tool(
+    name="generate_application_answers",
+    description="Generates answers to screening questions grounded strictly in candidate profile facts, flagging missing information.",
+)
+async def generate_application_answers(
+    job_id: str,
+    questions: list[str],
+) -> dict[str, Any]:
+    args = {"job_id": job_id, "questions": questions}
+    return await log_tool_activity(
+        "generate_application_answers",
+        args,
+        lambda: handle_generate_application_answers(job_id=job_id, questions=questions),
+    )
+
+
+@server.tool(
+    name="get_application_preparation",
+    description="Retrieves the current application preparation status, tailored resume, cover letter, and answers for a job.",
+)
+async def get_application_preparation(job_id: str) -> dict[str, Any]:
+    return await handle_get_application_preparation(job_id=job_id)
 
 
 if __name__ == "__main__":

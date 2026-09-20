@@ -56,3 +56,24 @@ async def init_pgvector() -> None:
             ADD COLUMN IF NOT EXISTS preference_version VARCHAR(64),
             ADD COLUMN IF NOT EXISTS job_version VARCHAR(64);
         """))
+        # Auto-migrate application_preparations table if missing
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS application_preparations (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                resume_mode VARCHAR(50) DEFAULT 'EXISTING',
+                resume_id UUID REFERENCES resumes(id) ON DELETE SET NULL,
+                tailored_resume_content JSONB,
+                cover_letter TEXT,
+                question_answers JSONB DEFAULT '[]'::jsonb,
+                status VARCHAR(50) DEFAULT 'DRAFT',
+                metadata_info JSONB DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_user_job_prep UNIQUE (user_id, job_id)
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_app_prep_user_id ON application_preparations(user_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_app_prep_job_id ON application_preparations(job_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_app_prep_status ON application_preparations(status)"))
