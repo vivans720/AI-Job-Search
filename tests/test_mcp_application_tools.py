@@ -27,12 +27,12 @@ async def test_mcp_application_prep_tools_registration():
         "generate_cover_letter",
         "generate_application_answers",
         "get_application_preparation",
-        "fill_application",
     ]
     for t in phase9_tools:
         assert t in tools, f"Missing tool: {t}"
 
-    # Guardrail: Form submission must NOT exist in Phase 9 or Phase 10
+    # Guardrail: Form automation & submission must NOT exist
+    assert "fill_application" not in tools
     assert "submit_application" not in tools
     assert "auto_apply" not in tools
 

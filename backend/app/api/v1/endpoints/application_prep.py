@@ -138,31 +138,3 @@ async def update_status(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-
-class FillApplicationRequest(BaseModel):
-    dry_run: bool = Field(default=False, description="Simulate filling without mutating fields")
-    timeout_seconds: int = Field(default=45, ge=5, le=120)
-
-
-
-@router.post("/{job_id}/fill")
-async def fill_application(
-    job_id: uuid.UUID,
-    payload: FillApplicationRequest = FillApplicationRequest(),
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
-    """Phase 10: Autonomously fills external application forms in browser, halting strictly before Submit."""
-    from app.services.browser_application_service import BrowserApplicationService
-
-    user = await get_or_create_default_user(db)
-    res = await BrowserApplicationService.fill_application_form(
-        db=db,
-        user_id=user.id,
-        job_id=job_id,
-        dry_run=payload.dry_run,
-        timeout_seconds=payload.timeout_seconds,
-    )
-    if res.get("status") == "error":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=res.get("error"))
-    return res

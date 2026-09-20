@@ -45,17 +45,11 @@ from tools.match_tools import handle_match_job, handle_rank_jobs
 from tools.activity_tools import handle_notify_activity
 from tools.research_tools import handle_get_job_research, handle_research_job_page
 from tools.application_tools import (
-    handle_fill_application,
     handle_generate_application_answers,
     handle_generate_cover_letter,
     handle_get_application_preparation,
     handle_prepare_application,
     handle_prepare_resume,
-)
-from tools.browser_tools import (
-    handle_disconnect_browser_session,
-    handle_get_browser_session_status,
-    handle_verify_browser_session,
 )
 from middleware.activity_logger import log_tool_activity
 
@@ -419,73 +413,6 @@ async def generate_application_answers(
 )
 async def get_application_preparation(job_id: str) -> dict[str, Any]:
     return await handle_get_application_preparation(job_id=job_id)
-
-
-@server.tool(
-    name="fill_application",
-    description=(
-        "Autonomously opens the external job application form via browser automation, "
-        "populates fields from candidate profile, answers screening questions, and uploads the resume. "
-        "CRITICAL SAFETY BARRIER: Strictly halts before clicking Submit and marks application READY_FOR_REVIEW."
-    ),
-)
-async def fill_application(
-    job_id: str,
-    dry_run: bool = False,
-    timeout_seconds: int = 45,
-) -> dict[str, Any]:
-    args = {"job_id": job_id, "dry_run": dry_run, "timeout_seconds": timeout_seconds}
-    return await log_tool_activity(
-        "fill_application",
-        args,
-        lambda: handle_fill_application(job_id=job_id, dry_run=dry_run, timeout_seconds=timeout_seconds),
-    )
-
-
-# -------------------------------------------------------------------------
-# Phase 11 — Authenticated Browser Session Tools
-# -------------------------------------------------------------------------
-
-@server.tool(
-    name="get_browser_session_status",
-    description=(
-        "Phase 11: Checks connection status of authenticated browser sessions (LinkedIn, Naukri). "
-        "Public discovery remains the active default."
-    ),
-)
-async def get_browser_session_status(platform: str | None = None) -> dict[str, Any]:
-    args = {"platform": platform}
-    return await log_tool_activity(
-        "get_browser_session_status",
-        args,
-        lambda: handle_get_browser_session_status(platform=platform),
-    )
-
-
-@server.tool(
-    name="verify_browser_session",
-    description="Phase 11: Probes whether saved browser session cookies for a platform (LinkedIn, Naukri) remain valid.",
-)
-async def verify_browser_session(platform: str, timeout_seconds: int = 20) -> dict[str, Any]:
-    args = {"platform": platform, "timeout_seconds": timeout_seconds}
-    return await log_tool_activity(
-        "verify_browser_session",
-        args,
-        lambda: handle_verify_browser_session(platform=platform, timeout_seconds=timeout_seconds),
-    )
-
-
-@server.tool(
-    name="disconnect_browser_session",
-    description="Phase 11: Safely flushes saved cookies and storage for a platform session, leaving public discovery unaffected.",
-)
-async def disconnect_browser_session(platform: str) -> dict[str, Any]:
-    args = {"platform": platform}
-    return await log_tool_activity(
-        "disconnect_browser_session",
-        args,
-        lambda: handle_disconnect_browser_session(platform=platform),
-    )
 
 
 if __name__ == "__main__":

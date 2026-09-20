@@ -13,9 +13,6 @@ import {
   ChevronRight,
   Info,
   Shield,
-  Globe,
-  ExternalLink,
-  Unlink,
 } from "lucide-react";
 import { getApiUrl } from "@/lib/api";
 
@@ -39,19 +36,6 @@ interface AutonomyPolicy {
   save_job: string;
   dismiss_job: string;
   update_pipeline_status: string;
-}
-
-interface BrowserSessionItem {
-  platform: string;
-  display_name: string;
-  supported: boolean;
-  enabled: boolean;
-  connected: boolean;
-  has_stored_session: boolean;
-  profile_dir?: string | null;
-  last_active_at?: string | null;
-  login_url?: string;
-  mode: string;
 }
 
 interface ScheduleInfo {
@@ -98,11 +82,6 @@ export default function SettingsPage() {
     update_pipeline_status: "approval_required",
   });
   const [updatingPolicy, setUpdatingPolicy] = useState(false);
-
-  // Browser Accounts states (Phase 11)
-  const [browserSessions, setBrowserSessions] = useState<Record<string, BrowserSessionItem>>({});
-  const [verifyingPlatform, setVerifyingPlatform] = useState<string | null>(null);
-  const [disconnectingPlatform, setDisconnectingPlatform] = useState<string | null>(null);
 
   const fetchPrefs = async () => {
     try {
@@ -246,76 +225,11 @@ export default function SettingsPage() {
     }
   };
 
-  const fetchBrowserSessions = async () => {
-    try {
-      const res = await fetch(getApiUrl("/api/v1/browser/sessions"));
-      if (res.ok) {
-        const data = await res.json();
-        if (data.sessions) {
-          setBrowserSessions(data.sessions);
-        }
-      }
-    } catch {
-      // Backend offline
-    }
-  };
-
-  const handleVerifySession = async (platform: string) => {
-    setVerifyingPlatform(platform);
-    setMessage(null);
-    try {
-      const res = await fetch(getApiUrl(`/api/v1/browser/sessions/${platform}/verify`), {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (res.ok) {
-        await fetchBrowserSessions();
-        setMessage({
-          type: "success",
-          text: data.authenticated
-            ? `${platform.toUpperCase()} session is active & verified.`
-            : `${platform.toUpperCase()} session expired or redirected to login.`,
-        });
-      } else {
-        setMessage({ type: "error", text: data.detail || "Failed to verify session." });
-      }
-    } catch {
-      setMessage({ type: "error", text: "Network error verifying session." });
-    } finally {
-      setVerifyingPlatform(null);
-    }
-  };
-
-  const handleDisconnectSession = async (platform: string) => {
-    setDisconnectingPlatform(platform);
-    setMessage(null);
-    try {
-      const res = await fetch(getApiUrl(`/api/v1/browser/sessions/${platform}/disconnect`), {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (res.ok) {
-        await fetchBrowserSessions();
-        setMessage({
-          type: "success",
-          text: data.message || `Disconnected ${platform.toUpperCase()} session.`,
-        });
-      } else {
-        setMessage({ type: "error", text: data.detail || "Failed to disconnect session." });
-      }
-    } catch {
-      setMessage({ type: "error", text: "Network error disconnecting session." });
-    } finally {
-      setDisconnectingPlatform(null);
-    }
-  };
-
   useEffect(() => {
     fetchPrefs();
     fetchSchedule();
     fetchSyncHistory();
     fetchAutonomyPolicy();
-    fetchBrowserSessions();
   }, []);
 
   if (loading) {
@@ -567,136 +481,6 @@ export default function SettingsPage() {
                 ) : (
                   <span className="text-[11px] font-mono text-slate-400 italic">Always Auto</span>
                 )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Browser Accounts (Phase 11: Authenticated Browser Mode) */}
-      <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-card-subtle space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
-              <Globe className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">Browser Accounts</h3>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                  Optional Opt-In
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Connect your browser sessions for authenticated portals. Public scraping remains the default.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            {
-              id: "linkedin",
-              name: "LinkedIn",
-              desc: "Persistent Chromium session for LinkedIn job postings and recruiter insights.",
-              loginUrl: "https://www.linkedin.com/login",
-            },
-            {
-              id: "naukri",
-              name: "Naukri",
-              desc: "Persistent Chromium session for Naukri India application forms and verified candidate portal.",
-              loginUrl: "https://www.naukri.com/nlogin/login",
-            },
-          ].map((portal) => {
-            const session = browserSessions[portal.id];
-            const isConnected = session?.connected ?? false;
-            const hasStored = session?.has_stored_session ?? false;
-            const isVerifying = verifyingPlatform === portal.id;
-            const isDisconnecting = disconnectingPlatform === portal.id;
-
-            return (
-              <div
-                key={portal.id}
-                className="p-5 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col justify-between space-y-4"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-slate-900">{portal.name}</span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${
-                          isConnected
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : hasStored
-                              ? "bg-amber-50 text-amber-700 border-amber-200"
-                              : "bg-slate-100 text-slate-600 border-slate-200"
-                        }`}
-                      >
-                        {isConnected
-                          ? "Connected"
-                          : hasStored
-                            ? "Session Saved (Disabled)"
-                            : "Not Connected"}
-                      </span>
-                    </div>
-
-                    <a
-                      href={portal.loginUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-slate-400 hover:text-slate-600 p-1"
-                      title={`Open ${portal.name} Login in New Tab`}
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-
-                  <p className="text-xs text-slate-500 leading-relaxed">{portal.desc}</p>
-
-                  <div className="pt-1 flex flex-wrap items-center gap-3 text-[11px] font-mono text-slate-500">
-                    <span>
-                      Mode:{" "}
-                      <strong className="text-slate-700">
-                        {isConnected ? "Authenticated" : "Public Discovery (Default)"}
-                      </strong>
-                    </span>
-                    {session?.last_active_at && (
-                      <span>
-                        Last Active:{" "}
-                        {new Date(session.last_active_at).toLocaleString("en-IN", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
-                  <button
-                    onClick={() => handleVerifySession(portal.id)}
-                    disabled={isVerifying}
-                    className="flex-1 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold transition-all shadow-xs disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${isVerifying ? "animate-spin text-indigo-600" : ""}`} />
-                    <span>{isVerifying ? "Verifying..." : "Check Session"}</span>
-                  </button>
-
-                  {hasStored && (
-                    <button
-                      onClick={() => handleDisconnectSession(portal.id)}
-                      disabled={isDisconnecting}
-                      className="px-3 py-1.5 bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-rose-600 rounded-lg text-xs font-semibold transition-all shadow-xs disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
-                      title="Clear saved cookies and logout"
-                    >
-                      <Unlink className="w-3 h-3" />
-                      <span>{isDisconnecting ? "Clearing..." : "Disconnect"}</span>
-                    </button>
-                  )}
-                </div>
               </div>
             );
           })}
