@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { PageHeader, Card, Button } from "@/components/ui";
 import { getApiUrl } from "@/lib/api";
+import { ApplicationHandoffModal } from "@/components/jobs/ApplicationHandoffModal";
 
 interface SavedJob {
   saved_id: string;
@@ -51,6 +52,8 @@ type SortOption = "date_desc" | "date_asc" | "title_asc" | "company_asc";
 const TABS: TabConfig[] = [
   { id: "ALL", label: "All" },
   { id: "SAVED", label: "Saved" },
+  { id: "PREPARING", label: "Preparing" },
+  { id: "READY_TO_APPLY", label: "Ready to Apply" },
   { id: "APPLIED", label: "Applied" },
   { id: "INTERVIEW", label: "Interview" },
   { id: "OFFER", label: "Offer" },
@@ -80,6 +83,16 @@ const STAGE_CONFIG: Record<
   VIEWED: {
     label: "Viewed",
     pillClass: "bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300",
+    isComplete: false,
+  },
+  PREPARING: {
+    label: "Preparing",
+    pillClass: "bg-indigo-50 text-indigo-800 border-indigo-200 hover:border-indigo-300",
+    isComplete: false,
+  },
+  READY_TO_APPLY: {
+    label: "Ready to Apply",
+    pillClass: "bg-purple-50 text-purple-900 border-purple-200 hover:border-purple-300 font-bold",
     isComplete: false,
   },
   APPLIED: {
@@ -135,6 +148,7 @@ export default function SavedPage() {
   const [updatingIds, setUpdatingIds] = useState<Record<string, boolean>>({});
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
   const [networkError, setNetworkError] = useState<string | null>(null);
+  const [selectedHandoffJob, setSelectedHandoffJob] = useState<SavedJob | null>(null);
 
   const pendingRemovalRef = useRef<PendingRemoval | null>(null);
   pendingRemovalRef.current = pendingRemoval;
@@ -685,6 +699,8 @@ export default function SavedPage() {
                     >
                       <option value="SAVED">Saved</option>
                       <option value="VIEWED">Viewed</option>
+                      <option value="PREPARING">Preparing</option>
+                      <option value="READY_TO_APPLY">Ready to Apply</option>
                       <option value="APPLIED">Applied</option>
                       <option value="INTERVIEW">Interview</option>
                       <option value="OFFER">Offer</option>
@@ -697,6 +713,17 @@ export default function SavedPage() {
                       </svg>
                     </span>
                   </div>
+
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setSelectedHandoffJob(item)}
+                    leftIcon={<Sparkles className="w-3.5 h-3.5 text-purple-600" />}
+                    className="min-h-[40px] sm:min-h-0 px-3 sm:px-2.5 bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-900"
+                    title="Prepare application materials & handoff"
+                  >
+                    Kit
+                  </Button>
 
                   <a
                     href={item.application_url}
@@ -785,6 +812,21 @@ export default function SavedPage() {
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+      )}
+
+      {selectedHandoffJob && (
+        <ApplicationHandoffModal
+          isOpen={!!selectedHandoffJob}
+          onClose={() => setSelectedHandoffJob(null)}
+          jobId={selectedHandoffJob.job_id}
+          jobTitle={selectedHandoffJob.title}
+          companyName={selectedHandoffJob.company}
+          applicationUrl={selectedHandoffJob.application_url}
+          onMarkApplied={() => {
+            fetchAllSaved();
+            setSelectedHandoffJob(null);
+          }}
+        />
       )}
     </div>
   );

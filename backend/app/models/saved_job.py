@@ -23,7 +23,7 @@ class SavedJob(Base):
         UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )
 
-    status: Mapped[str] = mapped_column(String(50), default="SAVED")  # DISCOVERED, SAVED, VIEWED, APPLIED, INTERVIEW, REJECTED, OFFER, IGNORED
+    status: Mapped[str] = mapped_column(String(50), default="SAVED")  # DISCOVERED, SAVED, VIEWED, PREPARING, READY_TO_APPLY, APPLIED, INTERVIEW, REJECTED, OFFER, IGNORED
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

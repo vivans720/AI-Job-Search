@@ -19,6 +19,8 @@ VALID_STATUSES = {
     "DISCOVERED",
     "SAVED",
     "VIEWED",
+    "PREPARING",
+    "READY_TO_APPLY",
     "APPLIED",
     "INTERVIEW",
     "REJECTED",
@@ -65,7 +67,16 @@ async def search_jobs_db(
             s.upper()
             for s in (
                 exclude_statuses
-                or ["SAVED", "APPLIED", "INTERVIEW", "OFFER", "REJECTED", "IGNORED"]
+                or [
+                    "SAVED",
+                    "PREPARING",
+                    "READY_TO_APPLY",
+                    "APPLIED",
+                    "INTERVIEW",
+                    "OFFER",
+                    "REJECTED",
+                    "IGNORED",
+                ]
             )
         ]
         rejected_subquery = (

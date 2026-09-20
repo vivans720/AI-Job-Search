@@ -439,7 +439,7 @@ export default function SettingsPage() {
             {
               key: "update_pipeline_status" as keyof AutonomyPolicy,
               name: "Update Application Stage",
-              desc: "Progress job statuses (e.g. Applied, Interview).",
+              desc: "Progress job statuses (e.g. Preparing, Ready to Apply). 'Applied' status strictly requires explicit candidate confirmation.",
               fixed: false,
               value: autonomyPolicy.update_pipeline_status,
             },

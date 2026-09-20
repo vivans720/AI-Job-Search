@@ -264,13 +264,24 @@ async def update_application(
 
 @server.tool(
     name="update_application_status",
-    description="Update manual tracking status for a job (DISCOVERED, SAVED, VIEWED, APPLIED, INTERVIEW, REJECTED, OFFER, IGNORED). Subject to approval gate.",
+    description="Update manual tracking status for a job (DISCOVERED, SAVED, VIEWED, PREPARING, READY_TO_APPLY, APPLIED, INTERVIEW, REJECTED, OFFER, IGNORED). Subject to approval gate.",
 )
 async def update_application_status(
     job_id: str, status: str, notes: str | None = None, reason: str | None = None
 ) -> dict[str, Any]:
     args = {"job_id": job_id, "status": status, "notes": notes, "reason": reason}
     return await log_tool_activity("update_application_status", args, lambda: handle_update_application_status(**args))
+
+
+@server.tool(
+    name="update_pipeline_status",
+    description="Update candidate job pipeline status (DISCOVERED, SAVED, VIEWED, PREPARING, READY_TO_APPLY, APPLIED, INTERVIEW, REJECTED, OFFER, IGNORED). Transitions to APPLIED strictly require user confirmation.",
+)
+async def update_pipeline_status(
+    job_id: str, status: str, notes: str | None = None, reason: str | None = None
+) -> dict[str, Any]:
+    args = {"job_id": job_id, "status": status, "notes": notes, "reason": reason}
+    return await log_tool_activity("update_pipeline_status", args, lambda: handle_update_application_status(**args))
 
 
 @server.tool(

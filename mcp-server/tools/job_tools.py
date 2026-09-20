@@ -173,29 +173,41 @@ async def handle_update_application_status(
         is_auto = await AgentApprovalService.check_is_action_autonomous(
             db, user.id, "update_pipeline_status"
         )
-        if not is_auto:
+        # APPLIED status is strictly gated on user confirmation regardless of autonomy policy
+        if upper_status == "APPLIED" or not is_auto:
             run_id = await ensure_active_run()
+            action_reason = (
+                reason
+                or ("Candidate confirmation required: Transitioning to 'APPLIED' requires explicit user verification that the application was submitted."
+                    if upper_status == "APPLIED"
+                    else f"Agent proposed moving job status to {upper_status}")
+            )
             apprv = await AgentApprovalService.create_approval_request(
                 db=db,
                 user_id=user.id,
                 action_type="UPDATE_PIPELINE_STATUS",
                 job_id=parsed_id,
                 payload={"job_id": job_id, "status": upper_status, "notes": notes},
-                reason=reason or f"Agent proposed moving job status to {upper_status}",
+                reason=action_reason,
                 run_id=run_id,
+            )
+            message = (
+                f"Transitioning to 'APPLIED' strictly requires candidate confirmation. Approval request queued (ID: {apprv.id})."
+                if upper_status == "APPLIED"
+                else f"Updating pipeline status to '{status}' requires user approval. Approval request queued (ID: {apprv.id})."
             )
             return {
                 "status": "APPROVAL_REQUIRED",
                 "approval_id": str(apprv.id),
                 "action": "update_pipeline_status",
-                "target_status": status,
+                "target_status": upper_status,
                 "job_id": job_id,
-                "message": f"Updating pipeline status to '{status}' requires user approval. Approval request queued (ID: {apprv.id}).",
+                "message": message,
             }
 
         try:
             return await save_or_update_job_status(
-                db, user.id, parsed_id, status=status, notes=notes
+                db, user.id, parsed_id, status=upper_status, notes=notes
             )
         except ValueError as e:
             return {"error": str(e)}

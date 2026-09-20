@@ -15,6 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import WhyThisJobCard from "@/components/jobs/WhyThisJobCard";
+import { ApplicationHandoffModal } from "@/components/jobs/ApplicationHandoffModal";
 
 interface OtherSource {
   source: string;
@@ -96,6 +97,7 @@ export default function JobDetailDrawer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "why" | "description">("overview");
+  const [prepModalOpen, setPrepModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !jobId) {
@@ -282,15 +284,26 @@ export default function JobDetailDrawer({
               </button>
             </div>
 
-            <a
-              href={job.application_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white rounded-xl text-xs font-semibold transition-all shadow-xs"
-            >
-              <span>Apply Directly</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPrepModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-50 border border-purple-200 text-purple-900 hover:bg-purple-100 rounded-xl text-xs font-semibold transition-all shadow-xs"
+                title="Prepare tailored application kit (resume, cover letter, Q&A)"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                <span>Application Kit</span>
+              </button>
+
+              <a
+                href={job.application_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white rounded-xl text-xs font-semibold transition-all shadow-xs"
+              >
+                <span>Apply Directly</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
         )}
 
@@ -477,6 +490,21 @@ export default function JobDetailDrawer({
           ) : null}
         </div>
       </div>
+
+      {job && (
+        <ApplicationHandoffModal
+          isOpen={prepModalOpen}
+          onClose={() => setPrepModalOpen(false)}
+          jobId={job.id}
+          jobTitle={job.title}
+          companyName={job.company}
+          applicationUrl={job.application_url}
+          onMarkApplied={() => {
+            if (onMarkApplied) onMarkApplied(job);
+            setPrepModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
