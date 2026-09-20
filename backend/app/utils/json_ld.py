@@ -186,3 +186,20 @@ def extract_job_posting_ld(html: str) -> dict[str, Any] | None:
         "source_type": "JSON_LD",
         "raw_node": job_node,
     }
+
+
+def parse_job_with_fallback(
+    html: str,
+    css_fallback_fn: Any,
+) -> tuple[dict[str, Any] | None, str]:
+    """
+    Attempts JSON-LD extraction first. If not found or empty, falls back to css_fallback_fn.
+    Returns (job_dict, extraction_source).
+    """
+    job = extract_job_posting_ld(html)
+    if job:
+        return job, "JSON_LD"
+    fallback_job = css_fallback_fn(html) if callable(css_fallback_fn) else None
+    if fallback_job:
+        return fallback_job, "CSS_SELECTOR"
+    return None, "NONE"

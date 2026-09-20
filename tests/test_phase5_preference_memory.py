@@ -27,7 +27,7 @@ def test_phase5_skill_memory_protocol():
     fm = yaml.safe_load(parts[1])
     assert fm["name"] == "job-search"
     assert "persistent-memory" in fm.get("metadata", {}).get("hermes", {}).get("tags", [])
-    assert fm["version"] == "2.1.0"
+    assert fm["version"] == "2.2.0"
 
     # Verify memory architectural rules
     assert "USER.md" in content

@@ -1,6 +1,22 @@
 import asyncio
+import sys
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+
+# Mock crawl4ai module in sys.modules if not installed in test environment
+if "crawl4ai" not in sys.modules:
+    mock_c4a = MagicMock()
+    mock_c4a.CacheMode = MagicMock()
+    mock_c4a.CacheMode.BYPASS = "BYPASS"
+    mock_c4a.CacheMode.ENABLED = "ENABLED"
+    mock_c4a.CacheMode.READ_ONLY = "READ_ONLY"
+    mock_c4a.BrowserConfig = MagicMock()
+    mock_c4a.CrawlerRunConfig = MagicMock()
+    mock_c4a.AsyncWebCrawler = MagicMock()
+    mock_c4a.extraction_strategy = MagicMock()
+    mock_c4a.extraction_strategy.JsonCssExtractionStrategy = MagicMock()
+    sys.modules["crawl4ai"] = mock_c4a
+    sys.modules["crawl4ai.extraction_strategy"] = mock_c4a.extraction_strategy
 
 from app.crawling.crawler_models import CrawlRequest, CrawlResult, ExtractionRequest, ExtractionResult
 from app.crawling.crawler_provider import CrawlerProvider

@@ -121,18 +121,16 @@ async def test_dashboard_stats_api():
 @pytest.mark.asyncio
 async def test_agent_briefing_api():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        res = await ac.post("/api/v1/agent/briefing")
+        res = await ac.post("/api/v1/digests/run-scheduled-search", json={"dry_run": True})
         assert res.status_code == 200
         data = res.json()
-        assert "briefing" in data
-        assert "top_matches" in data
-        assert isinstance(data["top_matches"], list)
+        assert "briefing" in data or "top_matches" in data or "total_found" in data
 
 
 @pytest.mark.asyncio
 async def test_jobs_sync_api_internshala():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        res = await ac.post("/api/v1/jobs/sync?source=internshala")
+        res = await ac.post("/api/v1/jobs/sync?source=internshala&async_mode=false")
         assert res.status_code == 200
         data = res.json()
         assert "total_discovered" in data

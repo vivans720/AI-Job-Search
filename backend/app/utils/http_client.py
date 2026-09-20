@@ -264,3 +264,9 @@ async def resilient_fetch(
             )
 
     return HTTPResult(status_code=0, text="", error="MAX_RETRIES_EXCEEDED", attempt_count=max_retries)
+
+
+async def resilient_fetch_text(url: str, **kwargs: Any) -> str:
+    """Convenience helper returning response text directly."""
+    result = await resilient_fetch(url, **kwargs)
+    return result.text

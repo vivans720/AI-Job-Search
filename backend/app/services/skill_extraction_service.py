@@ -25,6 +25,22 @@ def get_all_skill_forms(skill: str) -> set[str]:
     return forms
 
 
+def is_skill_present_in_text(skill: str, text: str) -> bool:
+    """
+    Checks if a skill or any of its canonical aliases appears as a distinct word in text.
+    Prevents false substring matches (e.g. 'rag' inside 'storage').
+    """
+    if not skill or not text:
+        return False
+    forms = get_all_skill_forms(skill)
+    for f in forms:
+        # Match as whole word with word boundaries
+        pattern = r"(?:\b|_)" + re.escape(f) + r"(?:\b|_)"
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    return False
+
+
 class SkillExtractionResult(BaseModel):
     required_skills: list[str] = Field(default_factory=list)
     preferred_skills: list[str] = Field(default_factory=list)
