@@ -51,6 +51,11 @@ from tools.application_tools import (
     handle_prepare_application,
     handle_prepare_resume,
 )
+from tools.digest_tools import (
+    handle_create_daily_digest,
+    handle_get_daily_digests,
+    handle_run_scheduled_job_search,
+)
 from middleware.activity_logger import log_tool_activity
 
 server = MCPServer("job-agent-india")
@@ -424,6 +429,57 @@ async def generate_application_answers(
 )
 async def get_application_preparation(job_id: str) -> dict[str, Any]:
     return await handle_get_application_preparation(job_id=job_id)
+
+
+# -------------------------------------------------------------------------
+# Daily Digest & Scheduled Autonomous Search Tools
+# -------------------------------------------------------------------------
+
+@server.tool(
+    name="get_daily_digests",
+    description="Retrieves recent daily job digests and briefings generated for the candidate.",
+)
+async def get_daily_digests(limit: int = 7) -> dict[str, Any]:
+    return await log_tool_activity(
+        "get_daily_digests",
+        {"limit": limit},
+        lambda: handle_get_daily_digests(limit=limit),
+    )
+
+
+@server.tool(
+    name="create_daily_digest",
+    description="Saves a formatted morning job digest into the candidate feed and tracks recommended job IDs to prevent duplicate alerts.",
+)
+async def create_daily_digest(
+    summary: str,
+    job_ids: list[str],
+    status: str = "DELIVERED",
+) -> dict[str, Any]:
+    args = {"summary": summary, "job_ids": job_ids, "status": status}
+    return await log_tool_activity(
+        "create_daily_digest",
+        args,
+        lambda: handle_create_daily_digest(summary=summary, job_ids=job_ids, status=status),
+    )
+
+
+@server.tool(
+    name="run_scheduled_job_search",
+    description="Executes the autonomous morning job search workflow: searches fresh jobs (<24h), checks candidate profile & preferences, eliminates previously alerted duplicates, scores fit, and creates daily briefing.",
+)
+async def run_scheduled_job_search(
+    freshness_hours: int = 24,
+    match_threshold: int | None = None,
+) -> dict[str, Any]:
+    args = {"freshness_hours": freshness_hours, "match_threshold": match_threshold}
+    return await log_tool_activity(
+        "run_scheduled_job_search",
+        args,
+        lambda: handle_run_scheduled_job_search(
+            freshness_hours=freshness_hours, match_threshold=match_threshold
+        ),
+    )
 
 
 if __name__ == "__main__":

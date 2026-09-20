@@ -77,3 +77,38 @@ async def init_pgvector() -> None:
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_app_prep_user_id ON application_preparations(user_id)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_app_prep_job_id ON application_preparations(job_id)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_app_prep_status ON application_preparations(status)"))
+
+        # Auto-migrate daily_digests table if missing
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS daily_digests (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                run_id UUID REFERENCES agent_runs(id) ON DELETE SET NULL,
+                digest_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                summary TEXT NOT NULL,
+                job_ids JSONB DEFAULT '[]'::jsonb,
+                total_found INTEGER DEFAULT 0,
+                strong_matches_count INTEGER DEFAULT 0,
+                status VARCHAR(50) DEFAULT 'DELIVERED',
+                metadata_info JSONB DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_daily_digests_user_id ON daily_digests(user_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_daily_digests_digest_date ON daily_digests(digest_date)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_daily_digests_status ON daily_digests(status)"))
+
+        # Auto-migrate digest_notified_jobs table if missing
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS digest_notified_jobs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                digest_id UUID REFERENCES daily_digests(id) ON DELETE SET NULL,
+                notified_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_user_job_digest_notified UNIQUE (user_id, job_id)
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_digest_notified_user_id ON digest_notified_jobs(user_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_digest_notified_job_id ON digest_notified_jobs(job_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_digest_notified_notified_at ON digest_notified_jobs(notified_at)"))

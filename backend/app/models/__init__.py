@@ -10,6 +10,7 @@ from app.models.search import SearchRecord
 from app.models.agent_activity import AgentRun, AgentEvent
 from app.models.agent_approval import AgentApproval
 from app.models.application_preparation import ApplicationPreparation
+from app.models.notification import DailyDigest, DigestNotifiedJob
 
 __all__ = [
     "User",
@@ -25,4 +26,6 @@ __all__ = [
     "AgentEvent",
     "AgentApproval",
     "ApplicationPreparation",
+    "DailyDigest",
+    "DigestNotifiedJob",
 ]

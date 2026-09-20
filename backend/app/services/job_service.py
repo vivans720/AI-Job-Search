@@ -44,6 +44,7 @@ async def search_jobs_db(
     exclude_user_id: uuid.UUID | None = None,
     exclude_statuses: list[str] | None = None,
     excluded_companies: list[str] | None = None,
+    exclude_notified: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Search database for fresh jobs.
@@ -87,6 +88,13 @@ async def search_jobs_db(
             )
         )
         stmt = stmt.where(Job.id.not_in(rejected_subquery))
+
+        if exclude_notified:
+            from app.models.notification import DigestNotifiedJob
+            notified_subquery = select(DigestNotifiedJob.job_id).where(
+                DigestNotifiedJob.user_id == exclude_user_id
+            )
+            stmt = stmt.where(Job.id.not_in(notified_subquery))
 
     if source and source.lower() != "all":
         stmt = stmt.where(Job.source == source.lower())
