@@ -394,10 +394,18 @@ Format response as JSON:
         await db.commit()
         await db.refresh(prep)
 
+        job_stmt = select(Job).where(Job.id == job_id)
+        job_res = await db.execute(job_stmt)
+        job = job_res.scalar_one_or_none()
+        app_url = (job.application_url or job.source_url) if job else None
+
         return {
             "status": "ok",
             "prep_id": str(prep.id),
             "job_id": str(job_id),
+            "job_title": job.title if job else None,
+            "company_name": job.company_name if job else None,
+            "application_url": app_url,
             "prep_status": prep.status,
             "resume": resume_result,
             "cover_letter": cover_letter_result.get("cover_letter") if cover_letter_result else prep.cover_letter,
@@ -420,10 +428,18 @@ Format response as JSON:
         if not prep:
             return None
 
+        job_stmt = select(Job).where(Job.id == job_id)
+        job_res = await db.execute(job_stmt)
+        job = job_res.scalar_one_or_none()
+        app_url = (job.application_url or job.source_url) if job else None
+
         return {
             "id": str(prep.id),
             "user_id": str(prep.user_id),
             "job_id": str(prep.job_id),
+            "job_title": job.title if job else None,
+            "company_name": job.company_name if job else None,
+            "application_url": app_url,
             "resume_mode": prep.resume_mode,
             "resume_id": str(prep.resume_id) if prep.resume_id else None,
             "tailored_resume_content": prep.tailored_resume_content,

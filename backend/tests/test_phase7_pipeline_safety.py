@@ -1,6 +1,13 @@
+import sys
 import uuid
+from pathlib import Path
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+# Ensure mcp-server directory is on sys.path for MCP tool tests
+mcp_server_dir = Path(__file__).resolve().parent.parent.parent / "mcp-server"
+if str(mcp_server_dir) not in sys.path:
+    sys.path.insert(0, str(mcp_server_dir))
 
 from app.models.job import Job
 from app.models.preference import Preference

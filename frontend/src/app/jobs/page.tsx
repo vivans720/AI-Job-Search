@@ -24,6 +24,7 @@ import {
 import { SyncProgressModal } from "@/components/SyncProgressModal";
 import JobDetailDrawer from "@/components/jobs/JobDetailDrawer";
 import { AgentActivityDrawer } from "@/components/agent/AgentActivityDrawer";
+import { DailyDigestBanner, DailyDigestData } from "@/components/agent/DailyDigestBanner";
 import { loadUserPreferences, saveUserPreferences } from "@/lib/preferences";
 
 interface SkillPartition {
@@ -164,6 +165,25 @@ export default function JobsPage() {
   } | null>(null);
   const [rejectingAll, setRejectingAll] = useState(false);
   const [agentActivityOpen, setAgentActivityOpen] = useState(false);
+
+  // Daily Digest state (Phase 11)
+  const [dailyDigest, setDailyDigest] = useState<DailyDigestData | null>(null);
+  const [loadingDigest, setLoadingDigest] = useState(false);
+
+  const fetchDailyDigest = async () => {
+    setLoadingDigest(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/digests/latest");
+      if (res.ok) {
+        const data = await res.json();
+        setDailyDigest(data);
+      }
+    } catch {
+      // Offline or no digest yet
+    } finally {
+      setLoadingDigest(false);
+    }
+  };
 
   const handleSyncLive = async (targetSource?: string) => {
     const src = targetSource || syncSource;
@@ -319,6 +339,7 @@ export default function JobsPage() {
   };
 
   useEffect(() => {
+    fetchDailyDigest();
     loadUserPreferences().then((prefs) => {
       if (prefs.excluded_companies && prefs.excluded_companies.length > 0) {
         setExcludedCompanies(prefs.excluded_companies);
@@ -1008,6 +1029,14 @@ export default function JobsPage() {
           </button>
         </div>
       </div>
+
+      {/* Daily Digest Morning Briefing Banner (Phase 11) */}
+      <DailyDigestBanner
+        digest={dailyDigest}
+        loading={loadingDigest}
+        onRefresh={fetchDailyDigest}
+        onOpenActivity={() => setAgentActivityOpen(true)}
+      />
 
       {/* Sync Notification Toast */}
       {syncNotification && (

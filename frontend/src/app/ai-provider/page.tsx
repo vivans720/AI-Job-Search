@@ -15,6 +15,7 @@ import {
   Cpu,
   Layers,
   Network,
+  Shield,
 } from "lucide-react";
 import { getApiUrl } from "@/lib/api";
 
@@ -40,6 +41,14 @@ const COMMON_AGENT_MODELS = [
   { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct", tag: "Open Weights" },
 ];
 
+interface AutonomyPolicy {
+  search: string;
+  analyze: string;
+  save_job: string;
+  dismiss_job: string;
+  update_pipeline_status: string;
+}
+
 export default function AgentConfigurationPage() {
   const [gatewayInfo, setGatewayInfo] = useState<AIProviderInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,6 +63,16 @@ export default function AgentConfigurationPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ reachable?: boolean; latency_ms?: number; error?: string; model?: string } | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Autonomy Policy state
+  const [autonomyPolicy, setAutonomyPolicy] = useState<AutonomyPolicy>({
+    search: "autonomous",
+    analyze: "autonomous",
+    save_job: "approval_required",
+    dismiss_job: "approval_required",
+    update_pipeline_status: "approval_required",
+  });
+  const [updatingPolicy, setUpdatingPolicy] = useState(false);
 
   const fetchConfig = async () => {
     setLoading(true);
@@ -92,8 +111,51 @@ export default function AgentConfigurationPage() {
     }
   };
 
+  const fetchAutonomyPolicy = async () => {
+    try {
+      const res = await fetch(getApiUrl("/api/v1/agent/autonomy-policy"));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.autonomy_policy) {
+          setAutonomyPolicy(data.autonomy_policy);
+        }
+      }
+    } catch {
+      // Backend offline
+    }
+  };
+
+  const handleTogglePolicy = async (actionKey: keyof AutonomyPolicy) => {
+    setUpdatingPolicy(true);
+    setMessage(null);
+    const nextVal = autonomyPolicy[actionKey] === "autonomous" ? "approval_required" : "autonomous";
+    const updated = { ...autonomyPolicy, [actionKey]: nextVal };
+    try {
+      const res = await fetch(getApiUrl("/api/v1/agent/autonomy-policy"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autonomy_policy: updated }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAutonomyPolicy(data.autonomy_policy);
+        setMessage({
+          type: "success",
+          text: `Autonomy for ${actionKey} set to ${nextVal}.`,
+        });
+      } else {
+        setMessage({ type: "error", text: "Failed to update autonomy policy." });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Network error updating policy." });
+    } finally {
+      setUpdatingPolicy(false);
+    }
+  };
+
   useEffect(() => {
     fetchConfig();
+    fetchAutonomyPolicy();
   }, []);
 
   const handleTestConnection = async () => {
@@ -402,6 +464,145 @@ export default function AgentConfigurationPage() {
               {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
               Save Configuration
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Autonomy Safety & Governance Matrix Card */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
+        <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-emerald-600" />
+              <h2 className="text-base font-semibold text-slate-900">Agent Autonomy Policy & Safety Matrix</h2>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Control the operational boundary for autonomous actions. High-risk mutations require explicit confirmation.
+            </p>
+          </div>
+          {updatingPolicy && (
+            <span className="text-xs text-slate-400 flex items-center gap-1.5">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Updating...
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          {/* Search & Analyze */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-slate-100 bg-slate-50/50 gap-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Discovery & Matching</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Read Only
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Agent autonomously searches job boards, parses requirements, and computes match scores.
+              </p>
+            </div>
+            <span className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-100 text-emerald-800 self-start sm:self-auto">
+              Autonomous
+            </span>
+          </div>
+
+          {/* Save Job */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-slate-100 bg-white gap-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Save Matched Job</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  Configurable
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Allow the agent to automatically save high-confidence matches to your pipeline without prompting.
+              </p>
+            </div>
+            <button
+              onClick={() => handleTogglePolicy("save_job")}
+              disabled={updatingPolicy}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer self-start sm:self-auto ${
+                autonomyPolicy.save_job === "autonomous"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                  : "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+              }`}
+            >
+              {autonomyPolicy.save_job === "autonomous" ? "Autonomous" : "Ask for Approval"}
+            </button>
+          </div>
+
+          {/* Dismiss Job */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-slate-100 bg-white gap-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Dismiss Job</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  Configurable
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Allow the agent to automatically dismiss jobs that fall below negative criteria or excluded companies.
+              </p>
+            </div>
+            <button
+              onClick={() => handleTogglePolicy("dismiss_job")}
+              disabled={updatingPolicy}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer self-start sm:self-auto ${
+                autonomyPolicy.dismiss_job === "autonomous"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                  : "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+              }`}
+            >
+              {autonomyPolicy.dismiss_job === "autonomous" ? "Autonomous" : "Ask for Approval"}
+            </button>
+          </div>
+
+          {/* Application Preparation */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-slate-100 bg-white gap-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Prepare Application</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Handoff Prep
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Agent drafts tailored resumes, cover letters, and application answers ready for your review.
+              </p>
+            </div>
+            <button
+              onClick={() => handleTogglePolicy("update_pipeline_status")}
+              disabled={updatingPolicy}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer self-start sm:self-auto ${
+                autonomyPolicy.update_pipeline_status === "autonomous"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                  : "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+              }`}
+            >
+              {autonomyPolicy.update_pipeline_status === "autonomous" ? "Autonomous" : "Approval Required"}
+            </button>
+          </div>
+
+          {/* Strict Gating: Mark as Applied */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-purple-200 bg-purple-50/40 gap-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-purple-950 uppercase tracking-wider">
+                  Mark as &quot;Applied&quot; Status
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 border border-purple-300">
+                  Strict Confirmation Gate
+                </span>
+              </div>
+              <p className="text-xs text-purple-900/80">
+                The agent provides the direct employer URL. A job is transitioned to &quot;Applied&quot; strictly upon user confirmation.
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-100 text-purple-900 text-xs font-bold border border-purple-300 shrink-0 self-start sm:self-auto">
+              <CheckCircle2 className="w-3.5 h-3.5 text-purple-700" />
+              <span>User Confirmation Strictly Required</span>
+            </div>
           </div>
         </div>
       </div>

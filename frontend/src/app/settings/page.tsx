@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   CheckCircle2,
   AlertCircle,
@@ -13,6 +14,7 @@ import {
   ChevronRight,
   Info,
   Shield,
+  Cpu,
 } from "lucide-react";
 import { getApiUrl } from "@/lib/api";
 
@@ -394,16 +396,25 @@ export default function SettingsPage() {
 
       {/* Agent Autonomy & Approval Gates (Phase 7) */}
       <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-card-subtle space-y-6">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-purple-50 border border-purple-200 text-purple-600">
-            <Shield className="w-5 h-5" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-purple-50 border border-purple-200 text-purple-600">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Agent Autonomy & Approval Policy</h3>
+              <p className="text-[11px] text-slate-500">
+                Configure whether the agent can execute pipeline actions automatically or must pause for your review.
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Agent Autonomy & Approval Policy</h3>
-            <p className="text-[11px] text-slate-500">
-              Configure whether the agent can execute pipeline actions automatically or must pause for your review.
-            </p>
-          </div>
+          <Link
+            href="/ai-provider"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors shrink-0 self-start sm:self-auto"
+          >
+            <Cpu className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Open Agent Config</span>
+          </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
