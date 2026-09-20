@@ -8,7 +8,7 @@
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An intelligent job discovery and recommendation engine tailored for the Indian tech job market, focusing on early-career engineers and freshers (0–2 years of experience). The system pairs deterministic 24-hour freshness gates and non-destructive skill-first scoring with resilient web crawling, local vector embeddings, multi-provider LLM intelligence, and Model Context Protocol (MCP) integration for autonomous agents.
+An intelligent job discovery and recommendation engine tailored for the Indian tech job market, focusing on early-career engineers and freshers (0–2 years of experience). The system pairs deterministic 24-hour freshness gates and non-destructive skill-first scoring with resilient web crawling, local vector embeddings, multi-provider LLM intelligence, and a fully autonomous Model Context Protocol (MCP) agent interface capable of researching job pages, preparing applications, and delivering daily job digests.
 
 ---
 
@@ -20,8 +20,8 @@ flowchart TD
         IN["Internshala Adapter (Playwright + HTTP)"]
         NK["Naukri Adapter (__NEXT_DATA__ + DOM)"]
         LI["LinkedIn Adapter (Guest API + Crawl4AI)"]
-        C4["Crawl4AI Provider"] -.->|Render Fallback| LI
-        TOR["Tor SOCKS5 Proxy"] -.->|Fallback on 403/429| HTTP["HTTP / Scraping Layer"]
+        C4["Crawl4AI Provider"] -.-|Render Fallback| LI
+        TOR["Tor SOCKS5 Proxy"] -.-|Fallback on 403/429| HTTP["HTTP / Scraping Layer"]
         HTTP --> IN
         HTTP --> NK
         HTTP --> LI
@@ -51,8 +51,9 @@ flowchart TD
     subgraph Interfaces["Delivery Interfaces"]
         MATCH --> API["FastAPI Backend REST API"]
         API <--> WEB["Next.js 15.1 Web Dashboard"]
-        API <--> MCP["FastMCP Server (stdio / SSE)"]
-        MCP <--> AGENT["AI Agents (Hermes / Claude)"]
+        API <--> MCP["FastMCP Server (stdio / SSE) — 33 tools"]
+        MCP <--> AGENT["Hermes / Claude (Autonomous Agent)"]
+        AGENT -->|"Daily Digest Cron (0 9 * * *)"| MCP
     end
 ```
 
@@ -73,7 +74,7 @@ Scoring prioritizes proven technical capability over inflated job titles or unca
 - **Experience Alignment (5%)**: Evaluates early-career suitability (0–2 years).
 - **Location Alignment (5%)**: Checks preferred cities or remote availability.
 - **Preference Alignment (5%)**: Compares salary expectations and candidate preferences.
-- **Recall-First Principle**: Jobs are not dropped due to low AI scores; lower-matching jobs are preserved and scored transparently so the candidate retains final judgment.
+- **Recall-First Principle**: Jobs are never dropped due to low AI scores; lower-matching jobs are preserved and scored transparently so the candidate retains final judgment.
 
 ### 3. Production Scraping & Anti-Bot Camouflage
 - **Internshala Adapter**: Isolated Chromium contexts with randomized viewports, stealth script injection (`navigator.webdriver` removal, realistic plugins), cookie clearing, and resilient HTTP fallbacks.
@@ -85,42 +86,86 @@ Scoring prioritizes proven technical capability over inflated job titles or unca
 
 ### 4. Zero-Cloud Embedding & Multi-Provider AI Architecture
 - **Local Dense Embeddings**: Generates 384-dimensional dense vector embeddings using `BAAI/bge-small-en-v1.5` via FastEmbed/ONNX runtime. Zero external API cost.
-- **11 Registered AI Providers**: Configurable LLM provider registry (`app.intelligence.registry`) supporting:
-  - **Local**: Ollama (default: `qwen3.5:9b`), OpenCode.
-  - **Cloud & Gateways**: OpenAI, Google Gemini, Anthropic Claude, Groq, OpenRouter, Cerebras, Mistral, NVIDIA NIM, and custom OpenAI-compatible endpoints (vLLM, LiteLLM, OmniRoute).
-- **Fallback Resilience**: Primary provider failures gracefully fall back to configured secondary providers.
+- **Semantic Vector Search**: `semantic_search_jobs` tool performs pgvector cosine-distance search over fresh jobs for concept-level retrieval beyond keyword matching.
+- **OmniRoute Single AI Gateway**: All LLM inference routes through a unified OpenAI-compatible gateway (`app.intelligence.registry` → `OpenAICompatibleProvider`). Any OpenAI-compatible backend — including self-hosted vLLM, LiteLLM, or Ollama behind OmniRoute — is supported transparently via `OMNIROUTE_BASE_URL` and `OMNIROUTE_MODEL`.
 
 ### 5. Asynchronous Task Worker & Queue
 - **Redis Job Queue**: Long-running crawling, multi-source sync, and AI enrichment tasks run asynchronously via `app.worker`.
 - **Granular Progress Reporting**: Real-time per-source ingestion statistics (`discovered`, `saved`, `updated`, `duplicates`, `rate_limit_wait_ms`).
 - **Synchronous Fallback**: Ingestion endpoints automatically fall back to synchronous execution when Redis queue is unavailable or when `async_mode=false` is requested.
 
-### 6. Model Context Protocol (MCP) Interface
-- Standalone FastMCP server (`mcp-server/server.py`) exposing 10 agentic tools over `stdio` or `sse`:
-  - `get_candidate_profile`: Retrieve skills, preferences, and experience.
-  - `search_jobs`: Query verified fresh jobs bounded by <= 24h age.
-  - `get_job`: Fetch full job details and original application URL.
-  - `match_job` & `rank_jobs`: Compute match breakdown and rank candidate lists.
-  - `save_job`, `ignore_job`, `update_application_status`: Manage pipeline state.
-  - `get_saved_jobs` & `get_search_history`: Audit active progress and query logs.
-- **Manual Application Integrity**: Updates application state (`DISCOVERED`, `SAVED`, `VIEWED`, `APPLIED`, `INTERVIEW`, `REJECTED`, `OFFER`); strictly prohibits automated unauthorized applications.
+### 6. Model Context Protocol (MCP) Interface — 33 Tools
+Standalone FastMCP server (`mcp-server/server.py`) exposing 33 agentic tools over `stdio` or `sse` across 8 modules:
 
-### 7. Company Logo Enrichment & Ingestion Pipeline
+**Profile & Preferences**
+- `get_candidate_profile` — Retrieve structured candidate intelligence from parsed resume.
+- `get_preferences` — Fetch search/sync preferences (freshness, locations, roles, source boards).
+- `update_preferences` — Safely update search and filtering preferences with validation.
+
+**Job Search & Ingestion**
+- `search_jobs` — Keyword/filter search bounded to freshness window (≤24h).
+- `semantic_search_jobs` — pgvector cosine-distance search for concept-level retrieval.
+- `get_job` / `get_jobs` — Fetch full details and match scores for one or many jobs.
+- `sync_jobs` — Trigger live aggregation from LinkedIn, Naukri, Internshala.
+- `get_search_history` — Audit recent search queries and freshness statistics.
+
+**Matching & Ranking**
+- `match_job` — 6-dimension match breakdown for a specific job against candidate profile.
+- `rank_jobs` — Rank a list of job IDs by relevance and match score.
+
+**Pipeline & Curation**
+- `save_job` / `batch_save_jobs` — Save or batch-recommend jobs (subject to approval policy).
+- `dismiss_job` / `ignore_job` — Remove jobs from recommendations.
+- `get_pipeline` / `get_saved_jobs` — List tracked jobs, optionally filtered by stage.
+- `get_application` / `update_application` / `update_application_status` / `update_pipeline_status` — Manage application lifecycle.
+- `check_approval_status` — Poll queued approval requests (save, dismiss, apply actions).
+
+**Deep Browser Research (Phase 8)**
+- `research_job_page` — Live Playwright inspection of job posting URL: extracts requirements, team context, application questions, and hiring status.
+- `get_job_research` — Retrieve previously recorded browser research insights for a job.
+
+**Application Preparation (Phase 9)**
+- `prepare_application` — Prepare complete application package (resume selection, cover letter, Q&A) without submitting. Places job in `READY_FOR_REVIEW` state.
+- `prepare_resume` — `EXISTING` preserves active resume; `TAILORED` reframes experience with strict anti-hallucination grounding.
+- `generate_cover_letter` — Authentic tailored cover letter based on candidate profile and browser research.
+- `generate_application_answers` — Grounded answers to screening questions, flagging missing information.
+- `get_application_preparation` — Retrieve current prep status, resume, cover letter, and answers.
+
+**Daily Digest & Scheduled Search (Phase 10)**
+- `run_scheduled_job_search` — Autonomous morning search: discovers fresh jobs, deduplicates previously alerted ones, scores fit, and creates daily briefing.
+- `create_daily_digest` — Save a formatted morning digest into the candidate feed, tracking notified job IDs to prevent duplicate alerts.
+- `get_daily_digests` — Retrieve recent daily digests and briefings.
+
+**Activity Stream**
+- `notify_activity` — Broadcast human-readable agent milestone messages to the activity stream (e.g. "Filtered 45 jobs down to 8 matches"). Never exposes raw chain-of-thought.
+
+**Manual Application Integrity**: Pipeline state machine (`DISCOVERED` → `SAVED` → `VIEWED` → `PREPARING` → `READY_TO_APPLY` → `APPLIED` → `INTERVIEW` → `REJECTED` / `OFFER` / `IGNORED`) strictly prohibits automated unauthorized submissions. Transitions to `APPLIED` require explicit user confirmation.
+
+**Autonomy Approval Gate**: Agent actions that mutate pipeline state (save, dismiss, batch operations) are intercepted by an approval policy. When active, the agent queues an approval request; the candidate reviews and confirms in the UI before the mutation is committed.
+
+### 7. Autonomous Daily Digest (Scheduled Morning Search)
+- **Hermes Cron**: `scripts/hermes_cron_setup.py` registers a `0 9 * * *` Hermes scheduled task that runs the full morning job hunt autonomously.
+- **Duplicate Prevention**: `DigestNotifiedJob` table tracks job IDs included in previous digests; subsequent runs exclude already-alerted jobs.
+- **Zero-Match Handling**: Digest generated even when no matching jobs found, with actionable guidance.
+- **Agent Activity Logging**: Each scheduled run records `AgentRun` records and milestone events for full observability.
+
+### 8. Company Logo Enrichment & Ingestion Pipeline
 - **Adapter Ingestion**: Scrapers extract verified company logos directly from LinkedIn (`img.artdeco-entity-image`), Internshala (`.company_logo img`), and Naukri (`logoPath` in `__NEXT_DATA__` JSON or `.comp-logo img`).
 - **Database & Schemas**: Dedicated `company_logo_url` and `logo_url` columns on jobs and companies tables with database migrations.
 - **Resilient Fallback**: Discovery feed and detail drawers render company logos with clean fallback to company initials monogram when image assets are missing or fail to load.
 
-### 8. Company Autosuggest & Multi-Add Preferences
+### 9. Company Autosuggest & Multi-Add Preferences
 - **Autosuggest Endpoint**: `GET /api/v1/companies/suggest?q=...&limit=8` delivers real-time case-insensitive prefix search against ingested employer entities.
 - **Interactive Multi-Entry**: Fast pill suggestions, interactive tags, and comma/newline batch pasting for excluded companies, priority companies, and locations.
 
-### 9. Modern Next.js 15 Dashboard & Design System
+### 10. Modern Next.js 15 Dashboard & Design System
 - Built with Next.js 15.1 (App Router), React 19, TypeScript, and Tailwind CSS.
 - **Design System Primitives**: Standardized atomic UI components in `@/components/ui` (`Button`, `Badge`, `Card`, `Input`, `Tabs`, `PageHeader`) using a unified Light SaaS palette (`#f8f9fc` canvas, `#ffffff` cards, `#059669` emerald telemetry, hairline borders).
 - **Discovery Radar (`/jobs`)**: Filterable feed with discrete freshness pills, role selectors, location tags, telemetry distribution bar, keyboard navigation (`J`/`K`/`Enter`/`S`/`X`), and real-time match breakdown modals.
-- **Pipeline Tracker (`/saved`)**: Status-driven board managing application lifecycle stages with tabular counters.
+- **Pipeline Tracker (`/saved`)**: Status-driven board managing full 10-stage application lifecycle with tabular counters.
 - **Profile & Resume (`/profile`)**: Consolidated resume intelligence center featuring PDF resume parser, SHA256 verification, extracted skill overview, and candidate profile editor (`/resume` redirects cleanly).
 - **Preferences (`/preferences`)**: Fine-grained configuration for target roles, autosuggested priority/excluded companies, and scoring thresholds.
+- **Settings (`/settings`)**: Application-level settings and agent autonomy policy controls.
 - **AI Diagnostics (`/ai-provider`)**: Real-time provider switcher, latency ping tests, and capability inspection.
 
 ---
@@ -133,9 +178,9 @@ Scoring prioritizes proven technical capability over inflated job titles or unca
 | **Database & Vector** | PostgreSQL 16, pgvector, SQLAlchemy 2.0 (asyncio + asyncpg), Alembic |
 | **Caching & Queuing** | Redis 7, redis-py (asyncio), custom task worker |
 | **Web Crawling** | Playwright (stealth), Crawl4AI 0.9+, BeautifulSoup4, HTTPX |
-| **Embeddings & AI** | FastEmbed (`BAAI/bge-small-en-v1.5`), Ollama, OpenAI, Gemini, Anthropic |
+| **Embeddings & AI** | FastEmbed (`BAAI/bge-small-en-v1.5`), OmniRoute AI Gateway (OpenAI-compatible) |
 | **Frontend** | Next.js 15.1, React 19, TypeScript 5, Tailwind CSS 3.4, Lucide React |
-| **Agent Interface** | Model Context Protocol (FastMCP 1.x) |
+| **Agent Interface** | Model Context Protocol (FastMCP 1.x) — 33 tools |
 | **Containerization** | Docker, Docker Compose |
 
 ---
@@ -147,15 +192,15 @@ Scoring prioritizes proven technical capability over inflated job titles or unca
 ├── backend/
 │   ├── alembic/                # Database migration revisions
 │   ├── app/
-│   │   ├── api/v1/             # REST endpoints (jobs, profile, preferences, ai, sources)
+│   │   ├── api/v1/             # REST endpoints (jobs, profile, preferences, ai, sources, dashboard, companies, agent_activity, application_prep, digests)
 │   │   ├── core/               # Logging, Redis pool, rate limiting, metrics
 │   │   ├── crawling/           # Crawl4AI provider and browser abstractions
 │   │   ├── intelligence/       # LLM provider registry, extractors, embeddings
-│   │   ├── models/             # SQLAlchemy ORM models (Job, Company, Profile, etc.)
+│   │   ├── models/             # SQLAlchemy ORM models (Job, Company, Profile, AgentRun, DailyDigest, etc.)
 │   │   ├── schemas/            # Pydantic request and response schemas
-│   │   ├── services/           # Matching, ingestion, dedup, freshness services
+│   │   ├── services/           # Matching, ingestion, dedup, freshness, scheduled search, application prep services
 │   │   ├── sources/adapters/   # Scraper implementations (Internshala, Naukri, LinkedIn)
-│   │   ├── utils/              # Browser stealth, Tor client, JSON-LD parser
+│   │   ├── utils/              # Browser stealth, Tor client, JSON-LD parser, HTTP client
 │   │   ├── config.py           # Application configuration via Pydantic BaseSettings
 │   │   ├── main.py             # FastAPI factory and middleware setup
 │   │   └── worker.py           # Async Redis queue worker
@@ -164,18 +209,20 @@ Scoring prioritizes proven technical capability over inflated job titles or unca
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/
 │   ├── src/
-│   │   ├── app/                # Next.js App Router pages (jobs, saved, profile, ai-provider)
+│   │   ├── app/                # Next.js App Router pages (jobs, saved, profile, preferences, settings, ai-provider)
 │   │   ├── components/
 │   │   │   ├── ui/             # Reusable design system primitives (Button, Badge, Card, Input, Tabs, PageHeader)
-│   │   │   └── jobs/           # Discovery radar components & drawers
+│   │   │   ├── jobs/           # Discovery radar components, drawers, ApplicationHandoffModal
+│   │   │   └── agent/          # DailyDigestBanner and agent activity components
 │   │   └── lib/                # API clients, types, and company autosuggest helpers
 │   ├── public/                 # Static assets
 │   ├── Dockerfile              # Frontend container definition
 │   └── package.json            # Node dependencies
 ├── mcp-server/
-│   ├── server.py               # FastMCP server entry point
-│   └── tools/                  # Handlers for candidate, job, search, and match tools
-├── scripts/                    # Ingestion, seeding, and agent execution scripts
+│   ├── server.py               # FastMCP server entry point (33 tools)
+│   ├── middleware/             # Activity logger middleware for all tool calls
+│   └── tools/                  # Tool handlers: profile, search, job, match, activity, research, application, digest
+├── scripts/                    # Ingestion, seeding, agent execution, and Hermes cron setup scripts
 ├── docker-compose.yml          # Multi-service stack (postgres, redis, backend, worker, frontend, optional ollama)
 ├── Makefile                    # Standard project task runner
 └── .github/workflows/ci.yml    # Continuous integration pipeline
@@ -216,15 +263,12 @@ All settings are managed in `backend/app/config.py` and read from `.env` in the 
 | `EMBEDDING_PROVIDER` | `local` | Vector embedding backend (`local`) |
 | `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | FastEmbed ONNX model name |
 | `EMBEDDING_DIMENSIONS`| `384` | Embedding vector dimensionality |
-| `LLM_PROVIDER` | `ollama` | Active provider (`ollama`, `openai`, `gemini`, `anthropic`, `groq`, etc.) |
-| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `qwen3.5:9b` | Default Ollama model |
-| `OPENAI_API_KEY` | `""` | OpenAI API key |
-| `GEMINI_API_KEY` | `""` | Google Gemini API key |
-| `ANTHROPIC_API_KEY` | `""` | Anthropic Claude API key |
-| `GROQ_API_KEY` | `""` | Groq API key |
-| `OPENROUTER_API_KEY` | `""` | OpenRouter API key |
-| `LLM_FALLBACK_PROVIDER` | `None` | Secondary provider ID for automated failover |
+| `LLM_PROVIDER` | `omniroute` | Inference gateway identifier |
+| `OMNIROUTE_BASE_URL` | `http://localhost:8000/v1` | OmniRoute API endpoint |
+| `OMNIROUTE_API_KEY` | `""` | OmniRoute API key (if required by your gateway) |
+| `OMNIROUTE_MODEL` | `gpt-4o-mini` | Active model routed through OmniRoute |
+| `OMNIROUTE_TIMEOUT` | `45.0` | Request timeout in seconds |
+| `DEFAULT_AGENT_MODEL` | `gpt-4o-mini` | Default model for autonomous agent sessions |
 
 ### Crawling & Scraper Hardening
 | Variable | Default | Description |
@@ -385,9 +429,31 @@ Register with an MCP-compatible client (e.g. Hermes Agent, Claude Desktop):
 
 ---
 
+## Autonomous Daily Digest (Hermes Cron)
+
+Register the morning job hunt as a recurring Hermes scheduled task (runs daily at 09:00):
+
+```bash
+# Register cron (default: 0 9 * * *)
+python scripts/hermes_cron_setup.py --register
+
+# Use a custom schedule
+python scripts/hermes_cron_setup.py --register --schedule "0 8 * * 1-5"
+
+# List registered cron tasks
+python scripts/hermes_cron_setup.py --list
+
+# Remove the scheduled task
+python scripts/hermes_cron_setup.py --remove
+```
+
+The agent autonomously executes: sync fresh jobs → deduplicate previously alerted postings → score & rank → create daily digest briefing → broadcast activity milestones.
+
+---
+
 ## Testing & Verification
 
-The codebase includes an automated test suite covering database operations, normalization logic, deduplication, freshness enforcement, matching algorithms, and fault recovery.
+The codebase includes an automated test suite covering database operations, normalization logic, deduplication, freshness enforcement, matching algorithms, application prep pipeline, scheduled search, and fault recovery.
 
 Run backend test suite:
 ```bash

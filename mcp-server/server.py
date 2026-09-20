@@ -157,7 +157,7 @@ async def get_jobs(job_ids: list[str]) -> dict[str, Any]:
 
 @server.tool(
     name="sync_jobs",
-    description="Triggers live aggregation and sync from job boards (LinkedIn, Naukri, Internshala, Indeed). Rate-limited and non-blocking.",
+    description="Triggers live aggregation and sync from job boards (LinkedIn, Naukri, Internshala). Rate-limited and non-blocking.",
 )
 async def sync_jobs(
     source: str = "ALL",
