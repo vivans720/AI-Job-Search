@@ -45,6 +45,7 @@ from tools.match_tools import handle_match_job, handle_rank_jobs
 from tools.activity_tools import handle_notify_activity
 from tools.research_tools import handle_get_job_research, handle_research_job_page
 from tools.application_tools import (
+    handle_fill_application,
     handle_generate_application_answers,
     handle_generate_cover_letter,
     handle_get_application_preparation,
@@ -413,6 +414,27 @@ async def generate_application_answers(
 )
 async def get_application_preparation(job_id: str) -> dict[str, Any]:
     return await handle_get_application_preparation(job_id=job_id)
+
+
+@server.tool(
+    name="fill_application",
+    description=(
+        "Autonomously opens the external job application form via browser automation, "
+        "populates fields from candidate profile, answers screening questions, and uploads the resume. "
+        "CRITICAL SAFETY BARRIER: Strictly halts before clicking Submit and marks application READY_FOR_REVIEW."
+    ),
+)
+async def fill_application(
+    job_id: str,
+    dry_run: bool = False,
+    timeout_seconds: int = 45,
+) -> dict[str, Any]:
+    args = {"job_id": job_id, "dry_run": dry_run, "timeout_seconds": timeout_seconds}
+    return await log_tool_activity(
+        "fill_application",
+        args,
+        lambda: handle_fill_application(job_id=job_id, dry_run=dry_run, timeout_seconds=timeout_seconds),
+    )
 
 
 if __name__ == "__main__":

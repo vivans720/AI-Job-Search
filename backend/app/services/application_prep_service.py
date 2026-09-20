@@ -443,7 +443,15 @@ Format response as JSON:
         status: str,
     ) -> dict[str, Any]:
         """Updates preparation review status (e.g. READY_FOR_REVIEW, APPROVED)."""
-        valid_statuses = {"DRAFT", "READY_FOR_REVIEW", "APPROVED"}
+        valid_statuses = {
+            "DRAFT",
+            "PREPARING",
+            "FILLING",
+            "READY_FOR_REVIEW",
+            "APPROVED",
+            "SUBMITTED",
+            "FAILED",
+        }
         if status not in valid_statuses:
             raise ValueError(f"Invalid status '{status}'. Must be one of {valid_statuses}")
 

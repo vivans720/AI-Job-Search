@@ -38,7 +38,8 @@ class ApplicationPreparation(Base):
     question_answers: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
 
     # Status & Autonomy gate
-    status: Mapped[str] = mapped_column(String(50), default="DRAFT", index=True)  # DRAFT | READY_FOR_REVIEW | APPROVED
+    # PREPARING | FILLING | READY_FOR_REVIEW | APPROVED | SUBMITTED | FAILED
+    status: Mapped[str] = mapped_column(String(50), default="DRAFT", index=True)
 
     # Extra metadata (e.g. models used, tokens, source notes)
     metadata_info: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)

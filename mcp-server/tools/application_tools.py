@@ -127,3 +127,32 @@ async def handle_get_application_preparation(job_id: str) -> dict[str, Any]:
                 "message": "No application prepared yet for this job.",
             }
         return {"status": "ok", "preparation": prep}
+
+
+async def handle_fill_application(
+    job_id: str,
+    dry_run: bool = False,
+    timeout_seconds: int = 45,
+) -> dict[str, Any]:
+    """
+    Phase 10: Autonomously fills external application forms in browser.
+    Maps candidate profile, resume, and answers to web inputs.
+    Guaranteed programmatic barrier: NEVER clicks Submit and transitions to READY_FOR_REVIEW.
+    """
+    try:
+        parsed_id = uuid.UUID(job_id)
+    except ValueError:
+        return {"status": "error", "error": f"Invalid job_id format: '{job_id}'"}
+
+    from app.services.browser_application_service import BrowserApplicationService
+
+    async with async_session_factory() as db:
+        user = await get_or_create_default_user(db)
+        return await BrowserApplicationService.fill_application_form(
+            db=db,
+            user_id=user.id,
+            job_id=parsed_id,
+            dry_run=dry_run,
+            timeout_seconds=timeout_seconds,
+        )
+
