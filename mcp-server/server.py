@@ -52,6 +52,11 @@ from tools.application_tools import (
     handle_prepare_application,
     handle_prepare_resume,
 )
+from tools.browser_tools import (
+    handle_disconnect_browser_session,
+    handle_get_browser_session_status,
+    handle_verify_browser_session,
+)
 from middleware.activity_logger import log_tool_activity
 
 server = MCPServer("job-agent-india")
@@ -434,6 +439,52 @@ async def fill_application(
         "fill_application",
         args,
         lambda: handle_fill_application(job_id=job_id, dry_run=dry_run, timeout_seconds=timeout_seconds),
+    )
+
+
+# -------------------------------------------------------------------------
+# Phase 11 — Authenticated Browser Session Tools
+# -------------------------------------------------------------------------
+
+@server.tool(
+    name="get_browser_session_status",
+    description=(
+        "Phase 11: Checks connection status of authenticated browser sessions (LinkedIn, Naukri). "
+        "Public discovery remains the active default."
+    ),
+)
+async def get_browser_session_status(platform: str | None = None) -> dict[str, Any]:
+    args = {"platform": platform}
+    return await log_tool_activity(
+        "get_browser_session_status",
+        args,
+        lambda: handle_get_browser_session_status(platform=platform),
+    )
+
+
+@server.tool(
+    name="verify_browser_session",
+    description="Phase 11: Probes whether saved browser session cookies for a platform (LinkedIn, Naukri) remain valid.",
+)
+async def verify_browser_session(platform: str, timeout_seconds: int = 20) -> dict[str, Any]:
+    args = {"platform": platform, "timeout_seconds": timeout_seconds}
+    return await log_tool_activity(
+        "verify_browser_session",
+        args,
+        lambda: handle_verify_browser_session(platform=platform, timeout_seconds=timeout_seconds),
+    )
+
+
+@server.tool(
+    name="disconnect_browser_session",
+    description="Phase 11: Safely flushes saved cookies and storage for a platform session, leaving public discovery unaffected.",
+)
+async def disconnect_browser_session(platform: str) -> dict[str, Any]:
+    args = {"platform": platform}
+    return await log_tool_activity(
+        "disconnect_browser_session",
+        args,
+        lambda: handle_disconnect_browser_session(platform=platform),
     )
 
 

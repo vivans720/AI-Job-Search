@@ -67,8 +67,11 @@ class Settings(BaseSettings):
 
     # Browser & Scraping Hardening
     BROWSER_USER_DATA_DIR: str = "~/.config/job_agent_browser_profile"
+    BROWSER_PROFILE_ROOT: str = "~/.config/job_agent_browser_profile"
     BROWSER_HEADLESS: bool = True
     BROWSER_SLOW_MO: int = 50
+    BROWSER_LINKEDIN_ENABLED: bool = False
+    BROWSER_NAUKRI_ENABLED: bool = False
 
     # Tor Network Proxy Fallback
     TOR_PROXY_URL: str = "socks5://127.0.0.1:9050"
