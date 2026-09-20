@@ -22,7 +22,7 @@ class GenerateCoverLetterRequest(BaseModel):
 
 
 class GenerateAnswersRequest(BaseModel):
-    questions: list[str] = Field(..., min_items=1)
+    questions: list[str] = Field(..., min_length=1)
 
 
 class PrepareFullApplicationRequest(BaseModel):
@@ -39,8 +39,8 @@ class UpdateStatusRequest(BaseModel):
 async def get_application_prep(
     job_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_or_create_default_user),
 ) -> dict[str, Any]:
+    user = await get_or_create_default_user(db)
     prep = await ApplicationPrepService.get_preparation(db, user.id, job_id)
     if not prep:
         raise HTTPException(
@@ -55,8 +55,8 @@ async def prepare_full_application(
     job_id: uuid.UUID,
     payload: PrepareFullApplicationRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_or_create_default_user),
 ) -> dict[str, Any]:
+    user = await get_or_create_default_user(db)
     try:
         return await ApplicationPrepService.prepare_full_application(
             db=db,
@@ -75,8 +75,8 @@ async def prepare_resume(
     job_id: uuid.UUID,
     payload: PrepareResumeRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_or_create_default_user),
 ) -> dict[str, Any]:
+    user = await get_or_create_default_user(db)
     try:
         return await ApplicationPrepService.prepare_resume_for_job(
             db=db, user_id=user.id, job_id=job_id, mode=payload.mode
@@ -90,8 +90,8 @@ async def generate_cover_letter(
     job_id: uuid.UUID,
     payload: GenerateCoverLetterRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_or_create_default_user),
 ) -> dict[str, Any]:
+    user = await get_or_create_default_user(db)
     try:
         return await ApplicationPrepService.generate_cover_letter(
             db=db,
@@ -109,8 +109,8 @@ async def generate_answers(
     job_id: uuid.UUID,
     payload: GenerateAnswersRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_or_create_default_user),
 ) -> dict[str, Any]:
+    user = await get_or_create_default_user(db)
     try:
         return await ApplicationPrepService.generate_application_answers(
             db=db,
@@ -127,8 +127,8 @@ async def update_status(
     job_id: uuid.UUID,
     payload: UpdateStatusRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_or_create_default_user),
 ) -> dict[str, Any]:
+    user = await get_or_create_default_user(db)
     try:
         return await ApplicationPrepService.update_preparation_status(
             db=db,
