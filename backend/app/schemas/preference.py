@@ -82,7 +82,7 @@ class PreferenceResponse(BaseModel):
     priority_companies: list[str] = []
     excluded_companies: list[str] = []
     sync_interval_hours: int = 24
-    auto_sync_enabled: bool = True
+    auto_sync_enabled: bool = False
     last_auto_sync_at: datetime | None = None
     ai_provider: str | None = None
     ai_model: str | None = None

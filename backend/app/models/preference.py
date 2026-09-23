@@ -28,7 +28,7 @@ class Preference(Base):
 
     match_threshold: Mapped[int] = mapped_column(Integer, default=60)
     sync_interval_hours: Mapped[int] = mapped_column(Integer, default=24)
-    auto_sync_enabled: Mapped[bool] = mapped_column(default=True)
+    auto_sync_enabled: Mapped[bool] = mapped_column(default=False)
     last_auto_sync_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
@@ -78,7 +78,7 @@ class Preference(Base):
         kwargs.setdefault("experience_max_years", 2)
         kwargs.setdefault("match_threshold", 60)
         kwargs.setdefault("sync_interval_hours", 24)
-        kwargs.setdefault("auto_sync_enabled", True)
+        kwargs.setdefault("auto_sync_enabled", False)
         kwargs.setdefault("setup_completed", False)
         kwargs.setdefault("experience_level", "ALL")
         kwargs.setdefault("role_type", "ALL")

@@ -42,7 +42,7 @@ def _to_preference_response(pref) -> PreferenceResponse:
         excluded_companies=getattr(pref, "excluded_companies", []) or [],
         match_threshold=getattr(pref, "match_threshold", 60) if getattr(pref, "match_threshold", None) is not None else 60,
         sync_interval_hours=getattr(pref, "sync_interval_hours", 24) if getattr(pref, "sync_interval_hours", None) is not None else 24,
-        auto_sync_enabled=bool(getattr(pref, "auto_sync_enabled", True)) if getattr(pref, "auto_sync_enabled", None) is not None else True,
+        auto_sync_enabled=bool(getattr(pref, "auto_sync_enabled", False)) if getattr(pref, "auto_sync_enabled", None) is not None else False,
         last_auto_sync_at=getattr(pref, "last_auto_sync_at", None),
         ai_provider=getattr(pref, "ai_provider", None) or "omniroute",
         ai_model=getattr(pref, "ai_model", None) or settings.OMNIROUTE_MODEL or settings.DEFAULT_AGENT_MODEL,

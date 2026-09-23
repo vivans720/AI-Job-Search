@@ -138,3 +138,60 @@ async def update_status(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/{job_id}/resume/pdf")
+async def download_resume_pdf(
+    job_id: uuid.UUID,
+    mode: str = "EXISTING",
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import Response
+
+    user = await get_or_create_default_user(db)
+    try:
+        pdf_bytes = await ApplicationPrepService.export_resume_pdf(
+            db=db,
+            user_id=user.id,
+            job_id=job_id,
+            mode=mode,
+        )
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="Resume_{job_id}.pdf"'
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/{job_id}/cover-letter/pdf")
+async def download_cover_letter_pdf(
+    job_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import Response
+
+    user = await get_or_create_default_user(db)
+    try:
+        pdf_bytes = await ApplicationPrepService.export_cover_letter_pdf(
+            db=db,
+            user_id=user.id,
+            job_id=job_id,
+        )
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="Cover_Letter_{job_id}.pdf"'
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+

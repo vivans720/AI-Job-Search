@@ -66,10 +66,20 @@ class SchedulerService:
             now = datetime.now(timezone.utc)
             interval_delta = timedelta(hours=pref.sync_interval_hours)
 
-            if pref.last_auto_sync_at is not None:
-                next_due = pref.last_auto_sync_at + interval_delta
-                if now < next_due:
-                    return False
+            if pref.last_auto_sync_at is None:
+                # If first time auto-sync is observed enabled, initialize benchmark timestamp
+                # so it only runs after the full configured interval elapses, not instantly on boot.
+                pref.last_auto_sync_at = now
+                await db.commit()
+                logger.info(
+                    "scheduler_auto_sync_initialized_schedule",
+                    next_run=(now + interval_delta).isoformat(),
+                )
+                return False
+
+            next_due = pref.last_auto_sync_at + interval_delta
+            if now < next_due:
+                return False
 
             logger.info(
                 "scheduler_triggering_auto_sync",
@@ -99,7 +109,7 @@ class SchedulerService:
             pref = result.scalar_one_or_none()
             if not pref:
                 return {
-                    "auto_sync_enabled": True,
+                    "auto_sync_enabled": False,
                     "sync_interval_hours": 24,
                     "last_auto_sync_at": None,
                     "next_run_at": None,
@@ -115,8 +125,9 @@ class SchedulerService:
                     next_run_at = next_run_dt.isoformat()
                     seconds_until = max(0, int((next_run_dt - now).total_seconds()))
                 else:
-                    next_run_at = now.isoformat()
-                    seconds_until = 0
+                    next_run_dt = now + timedelta(hours=pref.sync_interval_hours)
+                    next_run_at = next_run_dt.isoformat()
+                    seconds_until = int(timedelta(hours=pref.sync_interval_hours).total_seconds())
 
             return {
                 "auto_sync_enabled": pref.auto_sync_enabled,

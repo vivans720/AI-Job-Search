@@ -40,6 +40,7 @@ flowchart TD
     subgraph Storage["Storage & Queue"]
         EMBED --> PG[("PostgreSQL 16 + pgvector")]
         REDIS[("Redis 7 (Task Queue & Cache)")] <--> WORKER["Background Worker"]
+        SCHED["Scheduler Service (6h / 12h / 24h)"] --> REDIS
         WORKER --> Pipeline
     end
 
@@ -50,7 +51,8 @@ flowchart TD
 
     subgraph Interfaces["Delivery Interfaces"]
         MATCH --> API["FastAPI Backend REST API"]
-        API <--> WEB["Next.js 15.1 Web Dashboard"]
+        API <--> PDF["Playwright PDF Engine (Resume & Cover Letter)"]
+        API <--> WEB["Next.js 15.1 Web Dashboard (Handoff & Tracker)"]
         API <--> MCP["FastMCP Server (stdio / SSE) — 33 tools"]
         MCP <--> AGENT["Hermes / Claude (Autonomous Agent)"]
         AGENT -->|"Daily Digest Cron (0 9 * * *)"| MCP
@@ -89,8 +91,9 @@ Scoring prioritizes proven technical capability over inflated job titles or unca
 - **Semantic Vector Search**: `semantic_search_jobs` tool performs pgvector cosine-distance search over fresh jobs for concept-level retrieval beyond keyword matching.
 - **OmniRoute Single AI Gateway**: All LLM inference routes through a unified OpenAI-compatible gateway (`app.intelligence.registry` → `OpenAICompatibleProvider`). Any OpenAI-compatible backend — including self-hosted vLLM, LiteLLM, or Ollama behind OmniRoute — is supported transparently via `OMNIROUTE_BASE_URL` and `OMNIROUTE_MODEL`.
 
-### 5. Asynchronous Task Worker & Queue
+### 5. Asynchronous Task Worker & Automated Scheduler
 - **Redis Job Queue**: Long-running crawling, multi-source sync, and AI enrichment tasks run asynchronously via `app.worker`.
+- **Automated Ingestion Scheduler**: `SchedulerService` runs a lightweight background polling loop tied to user preferences (`auto_sync_interval` of 6h, 12h, or 24h). Automatically dispatches background sync jobs through `task_queue` whenever the configured cadence elapses without requiring external cron daemons.
 - **Granular Progress Reporting**: Real-time per-source ingestion statistics (`discovered`, `saved`, `updated`, `duplicates`, `rate_limit_wait_ms`).
 - **Synchronous Fallback**: Ingestion endpoints automatically fall back to synchronous execution when Redis queue is unavailable or when `async_mode=false` is requested.
 
@@ -126,10 +129,13 @@ Standalone FastMCP server (`mcp-server/server.py`) exposing 33 agentic tools ove
 
 **Application Preparation (Phase 9)**
 - `prepare_application` — Prepare complete application package (resume selection, cover letter, Q&A) without submitting. Places job in `READY_FOR_REVIEW` state.
-- `prepare_resume` — `EXISTING` preserves active resume; `TAILORED` reframes experience with strict anti-hallucination grounding.
+- `prepare_resume` — `EXISTING` preserves active resume; `TAILORED` reframes experience with strict anti-hallucination grounding and categorized skill taxonomy.
 - `generate_cover_letter` — Authentic tailored cover letter based on candidate profile and browser research.
 - `generate_application_answers` — Grounded answers to screening questions, flagging missing information.
 - `get_application_preparation` — Retrieve current prep status, resume, cover letter, and answers.
+- **REST Endpoints for PDF Export**:
+  - `GET /api/v1/applications/prep/{job_id}/resume/pdf?mode=EXISTING|TAILORED` — Download generated PDF resume.
+  - `GET /api/v1/applications/prep/{job_id}/cover-letter/pdf` — Download tailored cover letter as PDF.
 
 **Daily Digest & Scheduled Search (Phase 10)**
 - `run_scheduled_job_search` — Autonomous morning search: discovers fresh jobs, deduplicates previously alerted ones, scores fit, and creates daily briefing.
@@ -143,22 +149,28 @@ Standalone FastMCP server (`mcp-server/server.py`) exposing 33 agentic tools ove
 
 **Autonomy Approval Gate**: Agent actions that mutate pipeline state (save, dismiss, batch operations) are intercepted by an approval policy. When active, the agent queues an approval request; the candidate reviews and confirms in the UI before the mutation is committed.
 
-### 7. Autonomous Daily Digest (Scheduled Morning Search)
+### 7. Headless Playwright PDF Export Engine
+- **Dedicated Rendering Service**: `PDFGeneratorService` converts structured candidate profiles and tailored application materials into publication-grade PDFs via headless Playwright (`chromium.launch(headless=True)`).
+- **Print Typography & Layout**: Generates clean, ATS-compliant, single/multi-page layouts styled with `@media print` rules, serif/sans-serif typography, structured skill matrices, bulleted experience items, and formal letterhead headers.
+- **Tailored & Existing Modes**: Supports both raw master resume snapshots and job-tailored profiles with categorized technical skills and custom summaries.
+- **Interactive UI Handoff Modal**: `ApplicationHandoffModal` in the Next.js frontend lets candidates review, copy answers, preview tailored summaries, and click to download the generated Resume PDF or Cover Letter PDF directly before submitting on company career sites.
+
+### 8. Autonomous Daily Digest (Scheduled Morning Search)
 - **Hermes Cron**: `scripts/hermes_cron_setup.py` registers a `0 9 * * *` Hermes scheduled task that runs the full morning job hunt autonomously.
 - **Duplicate Prevention**: `DigestNotifiedJob` table tracks job IDs included in previous digests; subsequent runs exclude already-alerted jobs.
 - **Zero-Match Handling**: Digest generated even when no matching jobs found, with actionable guidance.
 - **Agent Activity Logging**: Each scheduled run records `AgentRun` records and milestone events for full observability.
 
-### 8. Company Logo Enrichment & Ingestion Pipeline
+### 9. Company Logo Enrichment & Ingestion Pipeline
 - **Adapter Ingestion**: Scrapers extract verified company logos directly from LinkedIn (`img.artdeco-entity-image`), Internshala (`.company_logo img`), and Naukri (`logoPath` in `__NEXT_DATA__` JSON or `.comp-logo img`).
 - **Database & Schemas**: Dedicated `company_logo_url` and `logo_url` columns on jobs and companies tables with database migrations.
 - **Resilient Fallback**: Discovery feed and detail drawers render company logos with clean fallback to company initials monogram when image assets are missing or fail to load.
 
-### 9. Company Autosuggest & Multi-Add Preferences
+### 10. Company Autosuggest & Multi-Add Preferences
 - **Autosuggest Endpoint**: `GET /api/v1/companies/suggest?q=...&limit=8` delivers real-time case-insensitive prefix search against ingested employer entities.
 - **Interactive Multi-Entry**: Fast pill suggestions, interactive tags, and comma/newline batch pasting for excluded companies, priority companies, and locations.
 
-### 10. Modern Next.js 15 Dashboard & Design System
+### 11. Modern Next.js 15 Dashboard & Design System
 - Built with Next.js 15.1 (App Router), React 19, TypeScript, and Tailwind CSS.
 - **Design System Primitives**: Standardized atomic UI components in `@/components/ui` (`Button`, `Badge`, `Card`, `Input`, `Tabs`, `PageHeader`) using a unified Light SaaS palette (`#f8f9fc` canvas, `#ffffff` cards, `#059669` emerald telemetry, hairline borders).
 - **Discovery Radar (`/jobs`)**: Filterable feed with discrete freshness pills, role selectors, location tags, telemetry distribution bar, keyboard navigation (`J`/`K`/`Enter`/`S`/`X`), and real-time match breakdown modals.
@@ -198,13 +210,13 @@ Standalone FastMCP server (`mcp-server/server.py`) exposing 33 agentic tools ove
 │   │   ├── intelligence/       # LLM provider registry, extractors, embeddings
 │   │   ├── models/             # SQLAlchemy ORM models (Job, Company, Profile, AgentRun, DailyDigest, etc.)
 │   │   ├── schemas/            # Pydantic request and response schemas
-│   │   ├── services/           # Matching, ingestion, dedup, freshness, scheduled search, application prep services
+│   │   ├── services/           # Matching, ingestion, dedup, freshness, scheduled search, application prep, pdf generator, scheduler
 │   │   ├── sources/adapters/   # Scraper implementations (Internshala, Naukri, LinkedIn)
 │   │   ├── utils/              # Browser stealth, Tor client, JSON-LD parser, HTTP client
 │   │   ├── config.py           # Application configuration via Pydantic BaseSettings
 │   │   ├── main.py             # FastAPI factory and middleware setup
 │   │   └── worker.py           # Async Redis queue worker
-│   ├── tests/                  # Backend test suite
+│   ├── tests/                  # Backend test suite (matching, scrapers, prep, pdf, scheduler)
 │   ├── Dockerfile              # Production backend container definition
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/

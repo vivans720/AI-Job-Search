@@ -57,6 +57,10 @@ class BaseAIProvider(ABC):
         """Standard text completion given a chat conversation format."""
         pass
 
+    async def generate_response(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
+        """Alias for complete() to maintain backward compatibility."""
+        return await self.complete(messages, **kwargs)
+
     @abstractmethod
     async def complete_json(
         self, messages: list[dict[str, str]], schema: type | dict | None = None, **kwargs: Any

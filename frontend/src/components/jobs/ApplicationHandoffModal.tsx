@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Send,
   UserCheck,
+  Download,
 } from "lucide-react";
 import { Card, Button } from "@/components/ui";
 import { getApiUrl } from "@/lib/api";
@@ -27,6 +28,7 @@ interface ApplicationAnswer {
 interface TailoredResumeContent {
   tailored_summary?: string;
   highlighted_skills?: string[];
+  categorized_skills?: Record<string, string[]>;
   tailored_bullet_points?: string[];
   match_rationale?: string;
 }
@@ -74,6 +76,8 @@ export function ApplicationHandoffModal({
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [appliedConfirming, setAppliedConfirming] = useState(false);
+  const [downloadingResumePdf, setDownloadingResumePdf] = useState(false);
+  const [downloadingCoverLetterPdf, setDownloadingCoverLetterPdf] = useState(false);
 
   // Fetch initial preparation
   useEffect(() => {
@@ -225,6 +229,54 @@ export function ApplicationHandoffModal({
     setTimeout(() => setCopiedSection(null), 2000);
   };
 
+  const handleDownloadResumePdf = async () => {
+    setDownloadingResumePdf(true);
+    try {
+      const res = await fetch(
+        getApiUrl(`/api/v1/applications/prep/${jobId}/resume/pdf?mode=${resumeMode}`)
+      );
+      if (!res.ok) throw new Error("Failed to download resume PDF");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Resume_${companyName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to download resume PDF. Ensure candidate profile is configured.");
+    } finally {
+      setDownloadingResumePdf(false);
+    }
+  };
+
+  const handleDownloadCoverLetterPdf = async () => {
+    setDownloadingCoverLetterPdf(true);
+    try {
+      const res = await fetch(
+        getApiUrl(`/api/v1/applications/prep/${jobId}/cover-letter/pdf`)
+      );
+      if (!res.ok) throw new Error("Failed to download cover letter PDF");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Cover_Letter_${companyName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to download cover letter PDF.");
+    } finally {
+      setDownloadingCoverLetterPdf(false);
+    }
+  };
+
   const handleConfirmApplied = async () => {
     setAppliedConfirming(true);
     try {
@@ -313,28 +365,46 @@ export function ApplicationHandoffModal({
                       Resume Selection
                     </h3>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
-                    <button
-                      onClick={() => handleResumeModeChange("EXISTING")}
-                      className={`px-3 py-1 rounded-lg transition-all ${
-                        resumeMode === "EXISTING"
-                          ? "bg-white text-slate-900 shadow-xs"
-                          : "text-slate-500 hover:text-slate-800"
-                      }`}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={downloadingResumePdf}
+                      onClick={handleDownloadResumePdf}
+                      leftIcon={
+                        downloadingResumePdf ? (
+                          <RefreshCw className="w-3 h-3 animate-spin text-purple-600" />
+                        ) : (
+                          <Download className="w-3 h-3 text-purple-600" />
+                        )
+                      }
                     >
-                      Existing Primary
-                    </button>
-                    <button
-                      onClick={() => handleResumeModeChange("TAILORED")}
-                      className={`px-3 py-1 rounded-lg flex items-center gap-1 transition-all ${
-                        resumeMode === "TAILORED"
-                          ? "bg-white text-purple-700 shadow-xs"
-                          : "text-slate-500 hover:text-slate-800"
-                      }`}
-                    >
-                      <Sparkles className="w-3 h-3 text-purple-600" />
-                      AI-Tailored
-                    </button>
+                      {downloadingResumePdf ? "Exporting..." : "Download Resume PDF"}
+                    </Button>
+
+                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+                      <button
+                        onClick={() => handleResumeModeChange("EXISTING")}
+                        className={`px-3 py-1 rounded-lg transition-all ${
+                          resumeMode === "EXISTING"
+                            ? "bg-white text-slate-900 shadow-xs"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        Existing Primary
+                      </button>
+                      <button
+                        onClick={() => handleResumeModeChange("TAILORED")}
+                        className={`px-3 py-1 rounded-lg flex items-center gap-1 transition-all ${
+                          resumeMode === "TAILORED"
+                            ? "bg-white text-purple-700 shadow-xs"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        <Sparkles className="w-3 h-3 text-purple-600" />
+                        AI-Tailored
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -361,7 +431,25 @@ export function ApplicationHandoffModal({
                             </p>
                           </div>
                         )}
-                        {prepData.tailored_resume_content.highlighted_skills && (
+                        {prepData.tailored_resume_content.categorized_skills &&
+                        Object.keys(prepData.tailored_resume_content.categorized_skills).length > 0 ? (
+                          <div>
+                            <span className="font-bold text-purple-950 block text-[11px] uppercase tracking-wide">
+                              Categorized Competencies:
+                            </span>
+                            <div className="space-y-1 mt-1 text-[11px]">
+                              {Object.entries(prepData.tailored_resume_content.categorized_skills).map(
+                                ([cat, list]) =>
+                                  list && list.length > 0 ? (
+                                    <div key={cat} className="flex gap-1.5 items-baseline">
+                                      <span className="font-semibold text-slate-700 shrink-0">{cat}:</span>
+                                      <span className="text-slate-600 truncate">{list.join(", ")}</span>
+                                    </div>
+                                  ) : null
+                              )}
+                            </div>
+                          </div>
+                        ) : prepData.tailored_resume_content.highlighted_skills ? (
                           <div>
                             <span className="font-bold text-purple-950 block text-[11px] uppercase tracking-wide">
                               Highlighted Skills:
@@ -377,13 +465,14 @@ export function ApplicationHandoffModal({
                               ))}
                             </div>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ) : (
                       <p className="text-slate-500 italic">No tailored content generated yet.</p>
                     )}
                   </div>
                 )}
+
               </Card>
 
               {/* Section 2: Cover Letter */}
@@ -415,6 +504,22 @@ export function ApplicationHandoffModal({
                       leftIcon={<RefreshCw className={`w-3 h-3 ${generatingCoverLetter ? "animate-spin" : ""}`} />}
                     >
                       Regenerate
+                    </Button>
+
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={downloadingCoverLetterPdf || !coverLetter}
+                      onClick={handleDownloadCoverLetterPdf}
+                      leftIcon={
+                        downloadingCoverLetterPdf ? (
+                          <RefreshCw className="w-3 h-3 animate-spin text-purple-600" />
+                        ) : (
+                          <Download className="w-3 h-3 text-purple-600" />
+                        )
+                      }
+                    >
+                      {downloadingCoverLetterPdf ? "Exporting..." : "Download Cover Letter PDF"}
                     </Button>
 
                     <Button
